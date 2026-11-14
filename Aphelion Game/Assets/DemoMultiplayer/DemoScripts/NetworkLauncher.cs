@@ -184,12 +184,34 @@ public class NetworkLauncher : MonoBehaviour
     }
 
     public async void LeaveRoom()
+{
+    if (leaving || busy) return;
+
+    leaving = true;
+    busy = true;
+
+    Debug.Log("Leaving room...");
+
+    try
     {
-        leaving = true;
         await LeaveSessionQuietly();
+
+        currentCode = "";
+
         ShowMenu("Left the room.");
-        leaving = false;
     }
+    catch (System.Exception e)
+    {
+        Debug.LogError("Error leaving room: " + e);
+        ShowMenu("Returned to menu.");
+    }
+    finally
+    {
+        leaving = false;
+        busy = false;
+        SetMenuInteractable(true);
+    }
+}
 
     public void CopyCode()
     {
