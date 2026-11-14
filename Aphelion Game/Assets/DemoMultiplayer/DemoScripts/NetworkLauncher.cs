@@ -161,53 +161,76 @@ async Task SignIn()
     }
 
     // ---------- join ----------
-    public async void JoinRoom()
-    {
-        if (busy) return;
+    
+public async void JoinRoom()
+{
+    if (busy) return;
 
-        string code = codeInput.text.Trim().ToUpper();
-        if (code.Length == 0)
+    string code = codeInput.text.Trim().ToUpper();
+
+    if (code.Length == 0)
+    {
+        statusText.text = "Type a room code first.";
+        return;
+    }
+
+    busy = true;
+    SetMenuInteractable(false);
+
+    try
+    {
+        if (!ready) await SignIn();
+        if (!ready) return;
+
+        statusText.text = "Joining session...";
+        Debug.Log("[JOIN] Step 1: Starting session join");
+
+        session = await WithTimeout(
+            MultiplayerService.Instance.JoinSessionByCodeAsync(code),
+            30,
+            "Join room"
+        );
+
+        Debug.Log("[JOIN] Step 2: Session joined successfully");
+        Debug.Log("[JOIN] Session code: " + session.Code);
+
+        statusText.text = "Starting network...";
+
+        var nm = NetworkManager.Singleton;
+
+        Debug.Log("[JOIN] NetworkManager listening: " + nm.IsListening);
+
+        bool connected = await WaitForNetwork();
+
+        if (!connected)
         {
-            statusText.text = "Type a room code first.";
+            Debug.LogError("[JOIN] Step 3: Network connection failed");
+
+            await LeaveSessionQuietly();
+            ShowMenu("Could not connect to host.");
             return;
         }
 
-        busy = true;
-        SetMenuInteractable(false);
+        Debug.Log("[JOIN] Step 4: Successfully connected!");
 
-        try
-        {
-            if (!ready) await SignIn();
-            if (!ready) return;
-
-            statusText.text = "Joining...";
-            currentCode = code;
-            Debug.Log("[JOIN] joining " + code);
-
-            session = await WithTimeout(
-                MultiplayerService.Instance.JoinSessionByCodeAsync(code), 20, "Join room");
-
-            if (!await WaitForNetwork())
-            {
-                await LeaveSessionQuietly();
-                ShowMenu("Joined the room but could not connect.");
-                return;
-            }
-
-            ShowGame();
-        }
-        catch (System.Exception e)
-        {
-            session = null;
-            statusText.text = "Could not join: " + e.Message;
-            Debug.LogError("JOIN ERROR: " + e);
-        }
-        finally
-        {
-            busy = false;
-            SetMenuInteractable(true);
-        }
+        currentCode = session.Code;
+        ShowGame();
     }
+    catch (System.Exception e)
+    {
+        Debug.LogError("[JOIN] FAILED: " + e);
+
+        await LeaveSessionQuietly();
+
+        ShowMenu("Could not join: " + e.Message);
+    }
+    finally
+    {
+        busy = false;
+        SetMenuInteractable(true);
+    }
+}
+
 
     // ---------- leave ----------
     public async void LeaveRoom()
