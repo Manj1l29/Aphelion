@@ -31,6 +31,24 @@ public class NetworkLauncher : MonoBehaviour
     bool leaving;
     float countTimer;
 
+    // ---------- helpers ----------
+    static async Task WithTimeout(Task task, int seconds, string what)
+    {
+        var done = await Task.WhenAny(task, Task.Delay(seconds * 1000));
+        if (done != task)
+            throw new System.TimeoutException(what + " timed out after " + seconds + "s (network may be blocking it)");
+        await task;
+    }
+
+    static async Task<T> WithTimeout<T>(Task<T> task, int seconds, string what)
+    {
+        var done = await Task.WhenAny(task, Task.Delay(seconds * 1000));
+        if (done != task)
+            throw new System.TimeoutException(what + " timed out after " + seconds + "s (network may be blocking it)");
+        return await task;
+    }
+
+    // ---------- startup ----------
     async void Start()
     {
         ShowMenu("Connecting to Unity services...");
@@ -48,102 +66,107 @@ public class NetworkLauncher : MonoBehaviour
 
     async Task SignIn()
     {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                statusText.text = "Connecting to Unity services...";
+
+                if (UnityServices.State != ServicesInitializationState.Initialized)
+                    await WithTimeout(UnityServices.InitializeAsync(), 15, "Unity services init");
+
+                if (!AuthenticationService.Instance.IsSignedIn)
+                    await WithTimeout(AuthenticationService.Instance.SignInAnonymouslyAsync(), 15, "Sign in");
+
+                ready = true;
+                statusText.text = "Ready";
+                return;
+            }
+            catch (System.Exception e)
+            {
+                ready = false;
+                Debug.LogError("SIGN IN ERROR (attempt " + (attempt + 1) + "): " + e);
+                statusText.text = "Could not connect: " + e.Message;
+
+                // a stale saved login can break things the next day, so clear it and retry
+                try
+                {
+                    if (UnityServices.State == ServicesInitializationState.Initialized)
+                        AuthenticationService.Instance.ClearSessionToken();
+                }
+                catch { }
+            }
+        }
+    }
+
+    // ---------- host ----------
+    public async void HostRoom()
+    {
+        if (busy) return;
+
+        busy = true;
+        SetMenuInteractable(false);
+
         try
         {
-            if (UnityServices.State != ServicesInitializationState.Initialized)
-                await UnityServices.InitializeAsync();
-            if (!AuthenticationService.Instance.IsSignedIn)
-                await AuthenticationService.Instance.SignInAnonymouslyAsync();
-            ready = true;
-            statusText.text = "Ready";
+            if (!ready) await SignIn();
+            if (!ready) return;
+
+            statusText.text = "Creating room...";
+            Debug.Log("[HOST] creating session with WSS relay");
+
+            var options = new SessionOptions
+            {
+                MaxPlayers = PartySize
+            }.WithRelayNetwork(new RelayNetworkOptions(RelayProtocol.WSS, null, true));
+
+            session = await WithTimeout(
+                MultiplayerService.Instance.CreateSessionAsync(options), 20, "Create room");
+
+            currentCode = session.Code;
+            Debug.Log("[HOST] room created, code: " + currentCode);
+
+            statusText.text = "Connecting to game...";
+            bool connected = await WaitForNetwork();
+
+            if (!connected)
+            {
+                Debug.LogError("[HOST] network did not start or player did not spawn");
+                await LeaveSessionQuietly();
+                ShowMenu("Room was created but the game could not start. Check Console.");
+                return;
+            }
+
+            var nm = NetworkManager.Singleton;
+            if (nm == null || nm.LocalClient == null || nm.LocalClient.PlayerObject == null)
+            {
+                Debug.LogError("[HOST] player object was not spawned");
+                await LeaveSessionQuietly();
+                ShowMenu("Player failed to spawn.");
+                return;
+            }
+
+            ShowGame();
+            Debug.Log("[HOST] game started");
         }
         catch (System.Exception e)
         {
-            ready = false;
-            statusText.text = "Could not connect. Check internet and Project Settings > Services.";
-            Debug.LogError(e);
-        }
-    }
-
-    public async void HostRoom()
-{
-    if (busy) return;
-
-    busy = true;
-    SetMenuInteractable(false);
-
-    try
-    {
-        if (!ready)
-            await SignIn();
-
-        if (!ready)
-            return;
-
-        statusText.text = "Creating room...";
-
-        var options = new SessionOptions
-        {
-            MaxPlayers = PartySize
-        }.WithRelayNetwork();
-
-        session = await MultiplayerService.Instance.CreateSessionAsync(options);
-
-        currentCode = session.Code;
-
-        Debug.Log("Room created! Code: " + currentCode);
-
-        statusText.text = "Connecting to game...";
-
-        bool connected = await WaitForNetwork();
-
-        if (!connected)
-        {
-            Debug.LogError("Failed to connect or spawn player.");
-
+            Debug.LogError("HOST ERROR: " + e);
             await LeaveSessionQuietly();
-
-            ShowMenu("Could not start multiplayer. Try again.");
-            return;
+            ShowMenu("Could not create room: " + e.Message);
         }
-
-        var nm = NetworkManager.Singleton;
-
-        if (nm == null || nm.LocalClient.PlayerObject == null)
+        finally
         {
-            Debug.LogError("Player object was not spawned!");
-
-            await LeaveSessionQuietly();
-
-            ShowMenu("Player failed to spawn.");
-            return;
+            busy = false;
+            SetMenuInteractable(true);
         }
-
-        Debug.Log("Host player spawned successfully!");
-
-        ShowGame();
-
-        Debug.Log("Multiplayer game started!");
     }
-    catch (System.Exception e)
-    {
-        Debug.LogError("HOST ERROR: " + e);
 
-        await LeaveSessionQuietly();
-
-        ShowMenu("Could not create room. Check Console.");
-    }
-    finally
-    {
-        busy = false;
-        SetMenuInteractable(true);
-    }
-}
-
-
+    // ---------- join ----------
     public async void JoinRoom()
     {
         if (busy) return;
+
         string code = codeInput.text.Trim().ToUpper();
         if (code.Length == 0)
         {
@@ -153,6 +176,7 @@ public class NetworkLauncher : MonoBehaviour
 
         busy = true;
         SetMenuInteractable(false);
+
         try
         {
             if (!ready) await SignIn();
@@ -160,7 +184,10 @@ public class NetworkLauncher : MonoBehaviour
 
             statusText.text = "Joining...";
             currentCode = code;
-            session = await MultiplayerService.Instance.JoinSessionByCodeAsync(code);
+            Debug.Log("[JOIN] joining " + code);
+
+            session = await WithTimeout(
+                MultiplayerService.Instance.JoinSessionByCodeAsync(code), 20, "Join room");
 
             if (!await WaitForNetwork())
             {
@@ -168,13 +195,14 @@ public class NetworkLauncher : MonoBehaviour
                 ShowMenu("Joined the room but could not connect.");
                 return;
             }
+
             ShowGame();
         }
         catch (System.Exception e)
         {
             session = null;
-            statusText.text = "Could not join. Wrong code or room is full.";
-            Debug.LogError(e);
+            statusText.text = "Could not join: " + e.Message;
+            Debug.LogError("JOIN ERROR: " + e);
         }
         finally
         {
@@ -183,69 +211,64 @@ public class NetworkLauncher : MonoBehaviour
         }
     }
 
+    // ---------- leave ----------
     public async void LeaveRoom()
-{
-    if (leaving || busy) return;
-
-    leaving = true;
-    busy = true;
-
-    Debug.Log("Leaving room...");
-
-    try
     {
-        await LeaveSessionQuietly();
+        if (leaving || busy) return;
 
-        currentCode = "";
+        leaving = true;
+        busy = true;
 
-        ShowMenu("Left the room.");
+        try
+        {
+            await LeaveSessionQuietly();
+            currentCode = "";
+            ShowMenu("Left the room.");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error leaving room: " + e);
+            ShowMenu("Returned to menu.");
+        }
+        finally
+        {
+            leaving = false;
+            busy = false;
+            SetMenuInteractable(true);
+        }
     }
-    catch (System.Exception e)
-    {
-        Debug.LogError("Error leaving room: " + e);
-        ShowMenu("Returned to menu.");
-    }
-    finally
-    {
-        leaving = false;
-        busy = false;
-        SetMenuInteractable(true);
-    }
-}
 
     public void CopyCode()
     {
         GUIUtility.systemCopyBuffer = currentCode;
     }
 
+    // ---------- network ----------
     async Task<bool> WaitForNetwork()
-{
-    var nm = NetworkManager.Singleton;
-
-    if (nm == null)
     {
-        Debug.LogError("NetworkManager not found!");
-        return false;
-    }
-
-    for (int i = 0; i < 150; i++)
-    {
-        if (nm.IsListening &&
-            (nm.IsHost || nm.IsConnectedClient) &&
-            nm.LocalClient != null &&
-            nm.LocalClient.PlayerObject != null)
+        var nm = NetworkManager.Singleton;
+        if (nm == null)
         {
-            Debug.Log("Network connected and player spawned!");
-            return true;
+            Debug.LogError("NetworkManager not found!");
+            return false;
         }
 
-        await Task.Delay(100);
+        for (int i = 0; i < 150; i++)
+        {
+            if (nm.IsListening &&
+                (nm.IsHost || nm.IsConnectedClient) &&
+                nm.LocalClient != null &&
+                nm.LocalClient.PlayerObject != null)
+            {
+                Debug.Log("Network connected and player spawned!");
+                return true;
+            }
+            await Task.Delay(100);
+        }
+
+        Debug.LogError("Network or player spawning timed out!");
+        return false;
     }
-
-    Debug.LogError("Network or player spawning timed out!");
-
-    return false;
-}   
 
     async Task LeaveSessionQuietly()
     {
@@ -275,6 +298,7 @@ public class NetworkLauncher : MonoBehaviour
         leaving = false;
     }
 
+    // ---------- UI ----------
     void Update()
     {
         if (!hudPanel.activeSelf) return;
