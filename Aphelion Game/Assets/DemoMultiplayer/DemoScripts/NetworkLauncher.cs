@@ -64,40 +64,38 @@ public class NetworkLauncher : MonoBehaviour
         if (nm != null) nm.OnClientDisconnectCallback -= OnClientDisconnected;
     }
 
-    async Task SignIn()
+    Task signInTask;
+
+async Task DoSignIn()
+{
+    if (UnityServices.State != ServicesInitializationState.Initialized)
+        await UnityServices.InitializeAsync();
+
+    if (!AuthenticationService.Instance.IsSignedIn)
+        await AuthenticationService.Instance.SignInAnonymouslyAsync();
+}
+
+async Task SignIn()
+{
+    try
     {
-        for (int attempt = 0; attempt < 2; attempt++)
-        {
-            try
-            {
-                statusText.text = "Connecting to Unity services...";
+        statusText.text = "Connecting to Unity services...";
 
-                if (UnityServices.State != ServicesInitializationState.Initialized)
-                    await WithTimeout(UnityServices.InitializeAsync(), 15, "Unity services init");
+        if (signInTask == null || signInTask.IsFaulted || signInTask.IsCanceled)
+            signInTask = DoSignIn();
 
-                if (!AuthenticationService.Instance.IsSignedIn)
-                    await WithTimeout(AuthenticationService.Instance.SignInAnonymouslyAsync(), 15, "Sign in");
+        await WithTimeout(signInTask, 30, "Sign in");
 
-                ready = true;
-                statusText.text = "Ready";
-                return;
-            }
-            catch (System.Exception e)
-            {
-                ready = false;
-                Debug.LogError("SIGN IN ERROR (attempt " + (attempt + 1) + "): " + e);
-                statusText.text = "Could not connect: " + e.Message;
-
-                // a stale saved login can break things the next day, so clear it and retry
-                try
-                {
-                    if (UnityServices.State == ServicesInitializationState.Initialized)
-                        AuthenticationService.Instance.ClearSessionToken();
-                }
-                catch { }
-            }
-        }
+        ready = true;
+        statusText.text = "Ready";
     }
+    catch (System.Exception e)
+    {
+        ready = false;
+        statusText.text = "Could not connect: " + e.Message;
+        Debug.LogError("SIGN IN ERROR: " + e);
+    }
+}
 
     // ---------- host ----------
     public async void HostRoom()
@@ -118,7 +116,7 @@ public class NetworkLauncher : MonoBehaviour
             var options = new SessionOptions
             {
                 MaxPlayers = PartySize
-            }.WithRelayNetwork(new RelayNetworkOptions(RelayProtocol.WSS, null, true));
+            }.WithRelayNetwork();
 
             session = await WithTimeout(
                 MultiplayerService.Instance.CreateSessionAsync(options), 20, "Create room");

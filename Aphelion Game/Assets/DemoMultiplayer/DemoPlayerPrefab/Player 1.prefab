@@ -27,13 +27,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2377421812978667915}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.16659182, y: -0.09719782, z: 0.021785034, w: 0.98098177}
-  m_LocalPosition: {x: 17.760916, y: 21.31496, z: 13.382564}
-  m_LocalScale: {x: 0.99116, y: 0.99116, z: 2.529837}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.009, y: 1.767, z: 0.109}
+  m_LocalScale: {x: 0.99115986, y: 0.9911597, z: 2.5298374}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2468963408447618756}
-  m_LocalEulerAnglesHint: {x: 30.352, y: -14.814, z: 0.763}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!20 &6245239426668124412
 Camera:
   m_ObjectHideFlags: 0
@@ -216,13 +216,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 2
-  m_Radius: 0.5
+  m_Height: 2.13
+  m_Radius: 0.39
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0.07, y: 0.12, z: 0.12}
 --- !u!114 &4087292124252261002
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -251,7 +251,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 1126309901
+  GlobalObjectIdHash: 3043448290
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -383,7 +383,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8c2bfefed84f4e45a2860870220ff6c, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: -0.89
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c8c2bfefed84f4e45a2860870220ff6c, type: 3}
       propertyPath: m_LocalPosition.z
