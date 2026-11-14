@@ -152,6 +152,7 @@ GameObject:
   - component: {fileID: 8087673453642654335}
   - component: {fileID: 1754625756222137127}
   - component: {fileID: 4660433431778529713}
+  - component: {fileID: 1868375556001877137}
   m_Layer: 0
   m_Name: Player 1
   m_TagString: Untagged
@@ -329,6 +330,21 @@ MonoBehaviour:
   listener: {fileID: 5266419780685736098}
   movement: {fileID: 4087292124252261002}
   controller: {fileID: 5858514152236376725}
+--- !u!114 &1868375556001877137
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5244940243218305629}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2cf28fbd1d7d08d4490a7b2a32b65aa1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LocalPlayerVisibility
+  ShowTopMostFoldoutHeaderGroup: 1
+  bodyRenderers:
+  - {fileID: 4087463032722783043}
 --- !u!1 &8227488687552893791
 GameObject:
   m_ObjectHideFlags: 0
@@ -472,5 +488,10 @@ PrefabInstance:
 --- !u!4 &2468963408447618756 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c8c2bfefed84f4e45a2860870220ff6c, type: 3}
+  m_PrefabInstance: {fileID: 2722773828261927215}
+  m_PrefabAsset: {fileID: 0}
+--- !u!137 &4087463032722783043 stripped
+SkinnedMeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 2121381955536888428, guid: c8c2bfefed84f4e45a2860870220ff6c, type: 3}
   m_PrefabInstance: {fileID: 2722773828261927215}
   m_PrefabAsset: {fileID: 0}
