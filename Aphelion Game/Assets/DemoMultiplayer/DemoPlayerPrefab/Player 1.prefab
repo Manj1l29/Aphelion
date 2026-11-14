@@ -148,8 +148,8 @@ GameObject:
   - component: {fileID: 8813209519410326668}
   - component: {fileID: -8234102844915844404}
   - component: {fileID: 5858514152236376725}
-  - component: {fileID: 4087292124252261002}
   - component: {fileID: 8087673453642654335}
+  - component: {fileID: 4087292124252261002}
   - component: {fileID: 1754625756222137127}
   - component: {fileID: 4660433431778529713}
   - component: {fileID: 1868375556001877137}
@@ -224,22 +224,6 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0.07, y: 0.12, z: 0.12}
---- !u!114 &4087292124252261002
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5244940243218305629}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b68a946bb34e8fa46895abc4512f7361, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
-  cameraTransform: {fileID: 2982835970893875761}
-  walkSpeed: 4
-  lookSensitivity: 0.1
-  gravity: -20
 --- !u!114 &8087673453642654335
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -256,7 +240,7 @@ MonoBehaviour:
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
-  Ownership: 1
+  Ownership: 0
   AlwaysReplicateAsRoot: 0
   SynchronizeTransform: 1
   m_InScenePlaced: 0
@@ -267,6 +251,23 @@ MonoBehaviour:
   AutoObjectParentSync: 1
   SyncOwnerTransformWhenParented: 1
   AllowOwnerToParent: 0
+--- !u!114 &4087292124252261002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5244940243218305629}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b68a946bb34e8fa46895abc4512f7361, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
+  ShowTopMostFoldoutHeaderGroup: 1
+  cameraTransform: {fileID: 2982835970893875761}
+  walkSpeed: 4
+  lookSensitivity: 0.1
+  gravity: -20
 --- !u!114 &1754625756222137127
 MonoBehaviour:
   m_ObjectHideFlags: 0

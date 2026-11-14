@@ -7,10 +7,8 @@ using Unity.Netcode;
 [RequireComponent(typeof(CharacterController))]
 public class PlayerMovement : NetworkBehaviour
 {
-    [Header("Camera")]
     public Transform cameraTransform;
 
-    [Header("Movement")]
     public float walkSpeed = 4f;
     public float lookSensitivity = 0.1f;
     public float gravity = -20f;
@@ -26,11 +24,9 @@ public class PlayerMovement : NetworkBehaviour
 
     void Update()
     {
-        // Only control the player we own
-        if (!IsOwner) return;
+        if (!IsSpawned || !IsOwner) return;
 
-        if (Keyboard.current == null || Mouse.current == null)
-            return;
+        if (Keyboard.current == null || Mouse.current == null) return;
 
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
             SetCursorLocked(false);
@@ -43,8 +39,7 @@ public class PlayerMovement : NetworkBehaviour
             SetCursorLocked(true);
         }
 
-        if (Cursor.lockState != CursorLockMode.Locked)
-            return;
+        if (Cursor.lockState != CursorLockMode.Locked) return;
 
         Look();
         Move();
@@ -54,11 +49,7 @@ public class PlayerMovement : NetworkBehaviour
     {
         Vector2 delta = Mouse.current.delta.ReadValue();
 
-        transform.Rotate(
-            0f,
-            delta.x * lookSensitivity,
-            0f
-        );
+        transform.Rotate(0f, delta.x * lookSensitivity, 0f);
 
         pitch -= delta.y * lookSensitivity;
         pitch = Mathf.Clamp(pitch, -85f, 85f);
@@ -79,8 +70,7 @@ public class PlayerMovement : NetworkBehaviour
         if (kb.wKey.isPressed) z += 1f;
         if (kb.sKey.isPressed) z -= 1f;
 
-        Vector3 move = transform.right * x +
-                       transform.forward * z;
+        Vector3 move = transform.right * x + transform.forward * z;
 
         if (move.sqrMagnitude > 1f)
             move.Normalize();
@@ -90,8 +80,8 @@ public class PlayerMovement : NetworkBehaviour
 
         verticalVelocity += gravity * Time.deltaTime;
 
-        Vector3 velocity = move * walkSpeed +
-                           Vector3.up * verticalVelocity;
+        Vector3 velocity =
+            move * walkSpeed + Vector3.up * verticalVelocity;
 
         controller.Move(velocity * Time.deltaTime);
     }
