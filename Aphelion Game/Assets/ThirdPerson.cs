@@ -1,9 +1,5 @@
-using NUnit.Framework;
-using Unity.Mathematics;
 using UnityEngine;
-using UnityEngine.AI;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.XR.Haptics;
 
 [RequireComponent(typeof(Rigidbody))]
 public class ThirdPerson : MonoBehaviour
@@ -14,6 +10,10 @@ public class ThirdPerson : MonoBehaviour
     public float mouseSensitivity = 0.1f;
     public float cameraDistance = 5f;
     public float cameraHeight = 1.6f;
+    public float zoomSpeed = 1f;
+    public float minDistance = 2f;
+    public float maxDistance = 10f;
+    public float turnSpeed = 7f;
 
     private float yaw;
     private float pitch; 
@@ -28,28 +28,37 @@ public class ThirdPerson : MonoBehaviour
 
     void Update()
     {
-        
+        Look();
+        Zoom();
+        Jump();
     }
 
     private void FixedUpdate()
     {
-        
+        Movement();
     }
 
     private void LateUpdate()
     {
-        
+        PositionCamera();
+    }
+
+    void Zoom()
+    {
+        float scroll = Mouse.current.scroll.ReadValue().y;
+
+        if (scroll != 0f)
+            cameraDistance -= Mathf.Sign(scroll) * zoomSpeed;
+            cameraDistance = Mathf.Clamp(cameraDistance, minDistance, maxDistance);
     }
 
     void Look()
     {
         Vector2 mouseDelta = Mouse.current.delta.ReadValue();
         
-        yaw = mouseDelta.x * mouseSensitivity;
-        pitch = mouseDelta.y * mouseSensitivity;
-        pitch = Mathf.Clamp(pitch, -40f, 70f);
-        
-        transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+        yaw += mouseDelta.x * mouseSensitivity;
+        pitch -= mouseDelta.y * mouseSensitivity;
+        pitch = Mathf.Clamp(pitch, -90f, 90f);
     }
 
     Vector3 GetMoveInput()
@@ -62,7 +71,7 @@ public class ThirdPerson : MonoBehaviour
         if(kb.sKey.isPressed) z -= 1f;
         if(kb.dKey.isPressed) x += 1f;
 
-        return new Vector3(x, 0f, z);
+        return new Vector3(x, 0f, z).normalized;
     }
 
     void Jump()
@@ -74,7 +83,7 @@ public class ThirdPerson : MonoBehaviour
     bool IsGrounded()
     {
         //If the raycast hits something below the player, then the player is on the ground
-        return Physics.Raycast(transform.position, Vector3.down, 0.2f);
+        return Physics.Raycast(transform.position, Vector3.down, 1.1f);
     }
 
     void PositionCamera()
@@ -88,11 +97,18 @@ public class ThirdPerson : MonoBehaviour
 
     void Movement()
     {
+        Quaternion camYaw = Quaternion.Euler(0f, yaw, 0f);
         Vector3 input = GetMoveInput();
-        Vector3 moveDirection = transform.forward * input.z + transform.right * input.x;
+        Vector3 moveDirection = camYaw * input;
 
         Vector3 velocity = moveDirection * moveSpeed;
         velocity.y = rb.linearVelocity.y;
-        
+        rb.linearVelocity = velocity;
+
+        if (moveDirection != Vector3.zero)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+            rb.MoveRotation(Quaternion.Slerp(rb.rotation, targetRotation, turnSpeed * Time.fixedDeltaTime));
+        }
     }
 }
