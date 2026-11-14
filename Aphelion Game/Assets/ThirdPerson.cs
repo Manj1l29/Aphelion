@@ -5,8 +5,8 @@ using UnityEngine.InputSystem;
 public class ThirdPerson : MonoBehaviour
 {
     public Transform cam;
-    public float moveSpeed = 6.0f;
-    public float jumpForce = 6.0f;
+    public float moveSpeed = 200f;
+    public float jumpForce = 0.5f;
     public float mouseSensitivity = 0.1f;
     public float cameraDistance = 5f;
     public float cameraHeight = 1.6f;
