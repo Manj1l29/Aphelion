@@ -825,7 +825,8 @@ PlayerSettings:
   webGLCloseOnQuit: 0
   webWasm2023: 0
   webEnableSubmoduleStrippingCompatibility: 0
-  scriptingDefineSymbols: {}
+  scriptingDefineSymbols:
+    Standalone: 
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend:
@@ -924,11 +925,11 @@ PlayerSettings:
   captureStartupLogs: {}
   activeInputHandler: 1
   windowsGamepadBackendHint: 0
-  cloudProjectId: a3c7b1e1-a7fb-4b4d-b71d-33240de331ff
+  cloudProjectId: 568c901d-ceb0-4bd3-97f5-4146728b9740
   framebufferDepthMemorylessMode: 0
   qualitySettingsNames: []
-  projectName: Aphelion Game
-  organizationId: mpokhrel29
+  projectName: Nasa Hackathon 2026
+  organizationId: unity_daf23046734f998769c2
   cloudEnabled: 0
   legacyClampBlendShapeWeights: 0
   hmiLoadingImage: {fileID: 0}
