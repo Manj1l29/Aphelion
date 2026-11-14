@@ -10,14 +10,16 @@ public class PlayerSetup : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        if (!IsOwner)
-        {
-            playerCamera.enabled = false;
-            listener.enabled = false;
-            movement.enabled = false;
-            controller.enabled = false;
-            return;
-        }
+        if (IsOwner)
+{
+    int bodyLayer = LayerMask.NameToLayer("LocalBody");
+
+    foreach (var r in GetComponentsInChildren<Renderer>(true))
+        r.gameObject.layer = bodyLayer;
+
+    var cam = GetComponentInChildren<Camera>(true);
+    cam.cullingMask &= ~(1 << bodyLayer);
+}   
 
         controller.enabled = false;
         transform.position = new Vector3(((int)OwnerClientId % 4) * 2f - 3f, 1f, 0f);
