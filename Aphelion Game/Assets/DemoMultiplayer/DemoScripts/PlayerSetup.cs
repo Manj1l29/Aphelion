@@ -1,3 +1,4 @@
+
 using Unity.Netcode;
 using UnityEngine;
 
@@ -10,20 +11,35 @@ public class PlayerSetup : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        if (IsOwner)
-{
-    int bodyLayer = LayerMask.NameToLayer("LocalBody");
+        if (!IsOwner)
+        {
+            playerCamera.enabled = false;
+            listener.enabled = false;
+            movement.enabled = false;
+            controller.enabled = false;
+            return;
+        }
 
-    foreach (var r in GetComponentsInChildren<Renderer>(true))
-        r.gameObject.layer = bodyLayer;
+        int bodyLayer = LayerMask.NameToLayer("LocalBody");
 
-    var cam = GetComponentInChildren<Camera>(true);
-    cam.cullingMask &= ~(1 << bodyLayer);
-}   
+        if (bodyLayer != -1)
+        {
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+                r.gameObject.layer = bodyLayer;
+
+            playerCamera.cullingMask &= ~(1 << bodyLayer);
+        }
 
         controller.enabled = false;
-        transform.position = new Vector3(((int)OwnerClientId % 4) * 2f - 3f, 1f, 0f);
+
+        transform.position = new Vector3(
+            ((int)OwnerClientId % 4) * 2f - 3f,
+            1f,
+            0f
+        );
+
         controller.enabled = true;
+
         movement.SetCursorLocked(true);
     }
 }
