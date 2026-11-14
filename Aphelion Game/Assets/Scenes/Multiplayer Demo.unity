@@ -1452,7 +1452,7 @@ MonoBehaviour:
     AutoSpawnPlayerPrefabClientSide: 1
     NetworkProfilingMetrics: 1
     OldPrefabList: []
-  RunInBackground: 1
+  RunInBackground: 0
   LogLevel: 1
 --- !u!114 &1181375936
 MonoBehaviour:
