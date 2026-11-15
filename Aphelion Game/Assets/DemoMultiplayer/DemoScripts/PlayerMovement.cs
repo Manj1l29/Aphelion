@@ -1,3 +1,4 @@
+
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
@@ -6,22 +7,23 @@ using Unity.Netcode;
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerMovement : NetworkBehaviour
 {
+    [Header("Camera")]
     public Transform cam;
+    public float mouseSensitivity = 0.1f;
+    public float minPitch = -85f;
+    public float maxPitch = 85f;
+
+    [Header("Movement")]
     public float moveSpeed = 6f;
     public float runSpeed = 9f;
     public float jumpForce = 5f;
-    public float mouseSensitivity = 0.1f;
-    public float cameraDistance = 5f;
-    public float cameraHeight = 1.6f;
-    public float zoomSpeed = 1f;
-    public float minDistance = 2f;
-    public float maxDistance = 10f;
-    public float turnSpeed = 7f;
 
+    [Header("Animation")]
     public Animator animator;
 
     private float yaw;
     private float pitch;
+
     private Rigidbody rb;
     private Collider col;
 
@@ -29,60 +31,98 @@ public class PlayerMovement : NetworkBehaviour
     {
         rb = GetComponent<Rigidbody>();
         col = GetComponent<Collider>();
-        rb.freezeRotation = true;
+
+        // Allow horizontal rotation, freeze unwanted tilting.
+        rb.constraints =
+            RigidbodyConstraints.FreezeRotationX |
+            RigidbodyConstraints.FreezeRotationZ;
+
+        // Disable Rigidbody interpolation for unsmoothed rotation.
+        rb.interpolation = RigidbodyInterpolation.None;
     }
 
     public override void OnNetworkSpawn()
     {
         if (!IsOwner)
         {
-            cam.gameObject.SetActive(false);
+            if (cam != null)
+                cam.gameObject.SetActive(false);
+
             enabled = false;
             return;
         }
 
+        if (cam == null)
+        {
+            Debug.LogError("[PLAYER] First-person camera is not assigned!");
+            enabled = false;
+            return;
+        }
+
+        yaw = transform.eulerAngles.y;
+
         SetCursorLocked(true);
     }
 
-    void Update()
+    private void Update()
     {
-        UpdateAnimations();
-        
+        if (!IsOwner)
+            return;
+
         HandleCursor();
-        if (Cursor.lockState != CursorLockMode.Locked) return;
+
+        if (Cursor.lockState != CursorLockMode.Locked)
+        {
+            UpdateAnimations();
+            return;
+        }
 
         Look();
-        Zoom();
         Jump();
+        UpdateAnimations();
     }
 
     private void FixedUpdate()
     {
+        if (!IsOwner)
+            return;
+
         Movement();
     }
 
     private void LateUpdate()
     {
-        PositionCamera();
+        if (!IsOwner || cam == null)
+            return;
+
+        // Apply camera rotation directly with no smoothing.
+        cam.rotation = Quaternion.Euler(pitch, yaw, 0f);
     }
 
-    void UpdateAnimations()
+    private void Look()
     {
-        Vector3 flatVelocity = rb.linearVelocity;
-        flatVelocity.y = 0f;
+        if (Mouse.current == null)
+            return;
 
-        animator.SetFloat("Speed", flatVelocity.magnitude);
-        animator.SetBool("IsGrounded", IsGrounded());
+        Vector2 mouseDelta = Mouse.current.delta.ReadValue();
+
+        yaw += mouseDelta.x * mouseSensitivity;
+        pitch -= mouseDelta.y * mouseSensitivity;
+
+        pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
     }
 
-
-
-    void HandleCursor()
+    private void HandleCursor()
     {
+        if (Keyboard.current == null || Mouse.current == null)
+            return;
+
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
             SetCursorLocked(false);
 
-        bool clickedOnUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        bool clickedOnUI =
+            EventSystem.current != null &&
+            EventSystem.current.IsPointerOverGameObject();
 
         if (Mouse.current.leftButton.wasPressedThisFrame && !clickedOnUI)
             SetCursorLocked(true);
@@ -90,98 +130,99 @@ public class PlayerMovement : NetworkBehaviour
 
     public void SetCursorLocked(bool locked)
     {
-        Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+        Cursor.lockState = locked
+            ? CursorLockMode.Locked
+            : CursorLockMode.None;
+
         Cursor.visible = !locked;
     }
 
-    void Zoom()
+    private Vector3 GetMoveInput()
     {
-        float scroll = Mouse.current.scroll.ReadValue().y;
+        if (Keyboard.current == null)
+            return Vector3.zero;
 
-        if (scroll != 0f)
-        {
-            cameraDistance -= Mathf.Sign(scroll) * zoomSpeed;
-            cameraDistance = Mathf.Clamp(cameraDistance, minDistance, maxDistance);
-        }
-    }
-
-    void Look()
-    {
-        Vector2 mouseDelta = Mouse.current.delta.ReadValue();
-
-        yaw += mouseDelta.x * mouseSensitivity;
-        pitch -= mouseDelta.y * mouseSensitivity;
-        pitch = Mathf.Clamp(pitch, -40f, 70f);
-    }
-
-    Vector3 GetMoveInput()
-    {
         var kb = Keyboard.current;
-        float x = 0f, z = 0f;
+
+        float x = 0f;
+        float z = 0f;
 
         if (kb.wKey.isPressed) z += 1f;
-        if (kb.aKey.isPressed) x -= 1f;
         if (kb.sKey.isPressed) z -= 1f;
+        if (kb.aKey.isPressed) x -= 1f;
         if (kb.dKey.isPressed) x += 1f;
-
-        if (kb.shiftKey.isPressed)
-        {
-            animator.SetTrigger("Shift");
-            moveSpeed = runSpeed;
-        }
 
         return new Vector3(x, 0f, z).normalized;
     }
 
-    void Jump()
+    private void Movement()
     {
-        if (Keyboard.current.spaceKey.wasPressedThisFrame && IsGrounded())
+        Vector3 input =
+            Cursor.lockState == CursorLockMode.Locked
+            ? GetMoveInput()
+            : Vector3.zero;
+
+        Quaternion cameraYaw = Quaternion.Euler(0f, yaw, 0f);
+
+        Vector3 moveDirection = cameraYaw * input;
+
+        float currentSpeed = 0f;
+
+        if (Keyboard.current != null)
         {
-            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-            animator.SetTrigger("Jump");
-        }
-    }
-
-    bool IsGrounded()
-    {
-        Vector3 origin = col.bounds.center;
-        float distance = col.bounds.extents.y + 0.1f;
-        return Physics.Raycast(origin, Vector3.down, distance);
-    }
-
-    void PositionCamera()
-    {
-        Quaternion camRotation = Quaternion.Euler(pitch, yaw, 0f);
-        Vector3 focusPoint = transform.position + Vector3.up * cameraHeight;
-
-        cam.position = focusPoint - camRotation * Vector3.forward * cameraDistance;
-        cam.rotation = camRotation;
-    }
-
-    void Movement()
-    {
-        Vector3 input = Cursor.lockState == CursorLockMode.Locked ? GetMoveInput() : Vector3.zero;
-        Quaternion camYaw = Quaternion.Euler(0f, yaw, 0f);
-        Vector3 moveDirection = camYaw * input;
-
-        float currentSpeed;
-        if (Keyboard.current.leftShiftKey.isPressed)
-        {
-            currentSpeed = runSpeed;
-        }
-        else
-        {
-            currentSpeed = moveSpeed;
+            currentSpeed = Keyboard.current.leftShiftKey.isPressed
+                ? runSpeed
+                : moveSpeed;
         }
 
         Vector3 velocity = moveDirection * currentSpeed;
+
         velocity.y = rb.linearVelocity.y;
+
         rb.linearVelocity = velocity;
 
-        if (moveDirection != Vector3.zero)
+        // Rotate directly. No Slerp or turn-speed interpolation.
+        rb.MoveRotation(Quaternion.Euler(0f, yaw, 0f));
+    }
+
+    private void Jump()
+    {
+        if (Keyboard.current == null)
+            return;
+
+        if (Keyboard.current.spaceKey.wasPressedThisFrame && IsGrounded())
         {
-            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
-            rb.MoveRotation(Quaternion.Slerp(rb.rotation, targetRotation, turnSpeed * Time.fixedDeltaTime));
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+
+            if (animator != null)
+                animator.SetTrigger("Jump");
         }
+    }
+
+    private bool IsGrounded()
+    {
+        if (col == null)
+            return false;
+
+        Vector3 origin = col.bounds.center;
+        float distance = col.bounds.extents.y + 0.1f;
+
+        return Physics.Raycast(
+            origin,
+            Vector3.down,
+            distance
+        );
+    }
+
+    private void UpdateAnimations()
+    {
+        if (animator == null)
+            return;
+
+        Vector3 flatVelocity = rb.linearVelocity;
+        flatVelocity.y = 0f;
+
+        animator.SetFloat("Speed", flatVelocity.magnitude);
+        animator.SetBool("IsGrounded", IsGrounded());
     }
 }

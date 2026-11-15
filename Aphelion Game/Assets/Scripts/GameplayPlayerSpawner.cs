@@ -1,6 +1,5 @@
 
 using System.Collections.Generic;
-using System.Linq;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -8,27 +7,26 @@ using UnityEngine.SceneManagement;
 public class GameplayPlayerSpawner : MonoBehaviour
 {
     [Header("Gameplay Player")]
-    public NetworkObject gameplayPlayerPrefab;
+    [SerializeField] private NetworkObject gameplayPlayerPrefab;
 
     [Header("Spawn Points")]
-    public Transform[] spawnPoints = new Transform[4];
+    [SerializeField] private Transform[] spawnPoints = new Transform[4];
 
     private bool hasSpawnedPlayers;
 
     private void OnEnable()
     {
-        var nm = NetworkManager.Singleton;
+        NetworkManager nm = NetworkManager.Singleton;
 
         if (nm != null && nm.SceneManager != null)
         {
-            nm.SceneManager.OnLoadEventCompleted -= OnSceneLoaded;
             nm.SceneManager.OnLoadEventCompleted += OnSceneLoaded;
         }
     }
 
     private void OnDisable()
     {
-        var nm = NetworkManager.Singleton;
+        NetworkManager nm = NetworkManager.Singleton;
 
         if (nm != null && nm.SceneManager != null)
         {
@@ -45,7 +43,7 @@ public class GameplayPlayerSpawner : MonoBehaviour
         if (sceneName != "MainScene")
             return;
 
-        var nm = NetworkManager.Singleton;
+        NetworkManager nm = NetworkManager.Singleton;
 
         if (nm == null || !nm.IsServer || hasSpawnedPlayers)
             return;
@@ -54,105 +52,106 @@ public class GameplayPlayerSpawner : MonoBehaviour
 
         if (gameplayPlayerPrefab == null)
         {
-            Debug.LogError("[SPAWNER] Gameplay player prefab missing!");
+            Debug.LogError("[SPAWNER] Gameplay prefab is missing!");
             return;
         }
 
-        // Host first, followed by clients in ClientId order.
-        var clients = nm.ConnectedClientsList
-            .OrderBy(client => client.ClientId)
-            .ToList();
+        // Ensure the prefab uses our custom NetworkTransform.
+        if (gameplayPlayerPrefab.GetComponent<OwnerNetworkTransform>() == null)
+        {
+            Debug.LogError(
+                "[SPAWNER] OwnerNetworkTransform is missing from Player prefab!"
+            );
+            return;
+        }
 
+        // Get and sort connected clients.
+        List<NetworkClient> clients =
+            new List<NetworkClient>(nm.ConnectedClientsList);
+
+        clients.Sort((a, b) => a.ClientId.CompareTo(b.ClientId));
+
+        Debug.Log("[SPAWNER] Connected clients: " + clients.Count);
+
+        if (clients.Count == 0)
+        {
+            Debug.LogError("[SPAWNER] No connected clients!");
+            return;
+        }
+
+        // Validate spawn points.
         if (spawnPoints == null || spawnPoints.Length < clients.Count)
         {
             Debug.LogError("[SPAWNER] Not enough spawn points!");
             return;
         }
 
-        // Validate all spawn points.
         for (int i = 0; i < clients.Count; i++)
         {
             if (spawnPoints[i] == null)
             {
-                Debug.LogError("[SPAWNER] Spawn Point " +
-                               (i + 1) + " is not assigned!");
+                Debug.LogError(
+                    "[SPAWNER] Spawn point " + i + " is missing!"
+                );
                 return;
             }
 
-            Debug.Log("[SPAWNER] Point " + (i + 1) +
-                      " position: " + spawnPoints[i].position);
-        }
-
-        // Remove the lobby player objects.
-        foreach (var client in clients)
-        {
-            if (client.PlayerObject != null)
-            {
-                client.PlayerObject.Despawn(true);
-            }
-        }
-
-        // Spawn each gameplay player at their assigned point.
-        for (int i = 0; i < clients.Count; i++)
-        {
-            var client = clients[i];
-            Transform spawn = spawnPoints[i];
-
-            Vector3 spawnPosition = spawn.position;
-            Quaternion spawnRotation = spawn.rotation;
-
-            // Instantiate at the exact spawn position.
-            NetworkObject player = Instantiate(
-                gameplayPlayerPrefab,
-                spawnPosition,
-                spawnRotation
-            );
-
-            // Handle CharacterController if present.
-            CharacterController controller =
-                player.GetComponent<CharacterController>();
-
-            bool controllerWasEnabled =
-                controller != null && controller.enabled;
-
-            if (controller != null)
-                controller.enabled = false;
-
-            // Explicitly set the player transform.
-            player.transform.SetPositionAndRotation(
-                spawnPosition,
-                spawnRotation
-            );
-
-            // Synchronize Rigidbody position if present.
-            Rigidbody rb = player.GetComponent<Rigidbody>();
-
-            if (rb != null)
-            {
-                rb.position = spawnPosition;
-                rb.rotation = spawnRotation;
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-            }
-
-            if (controller != null)
-                controller.enabled = controllerWasEnabled;
-
-            Physics.SyncTransforms();
-
-            // Network-spawn as the assigned client's player.
-            player.SpawnAsPlayerObject(client.ClientId, true);
-
             Debug.Log(
-                "[SPAWNER] P" + (i + 1) +
-                " | Client ID: " + client.ClientId +
-                " | Spawn Point: " + spawn.name +
-                " | Position: " + player.transform.position
+                "[SPAWNER] Client " + clients[i].ClientId +
+                " assigned to " + spawnPoints[i].name +
+                " at " + spawnPoints[i].position
             );
         }
 
         hasSpawnedPlayers = true;
 
-        Debug.Log("[SPAWNER] ALL PLAYERS SPAWNED!");
+        // Remove lobby player objects.
+        foreach (NetworkClient client in clients)
+        {
+            if (client.PlayerObject != null &&
+                client.PlayerObject.IsSpawned)
+            {
+                client.PlayerObject.Despawn(true);
+            }
+        }
+
+        // Spawn each gameplay player.
+        for (int i = 0; i < clients.Count; i++)
+        {
+            NetworkClient client = clients[i];
+            Transform spawn = spawnPoints[i];
+
+            Vector3 position = spawn.position;
+            Vector3 eulerRotation = spawn.eulerAngles;
+
+            Debug.Log(
+                "[SPAWNER] Preparing client " +
+                client.ClientId + " at " + position
+            );
+
+            // Instantiate at a neutral position.
+            NetworkObject player = Instantiate(
+                gameplayPlayerPrefab,
+                Vector3.zero,
+                Quaternion.identity
+            );
+
+            // Send the correct spawn position to the owner.
+            OwnerNetworkTransform ownerTransform =
+                player.GetComponent<OwnerNetworkTransform>();
+
+            ownerTransform.InitialSpawnPosition.Value = position;
+            ownerTransform.InitialSpawnEuler.Value = eulerRotation;
+
+            // Spawn as the connected client's player object.
+            player.SpawnAsPlayerObject(client.ClientId, true);
+
+            Debug.Log(
+                "[SPAWNER] Spawned player for client " +
+                client.ClientId
+            );
+        }
+
+        Debug.Log("[SPAWNER] Gameplay spawning complete.");
     }
 }

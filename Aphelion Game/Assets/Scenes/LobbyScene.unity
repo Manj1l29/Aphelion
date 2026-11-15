@@ -1614,7 +1614,7 @@ MonoBehaviour:
   lobbyStatusText: {fileID: 380048399}
   readyButton: {fileID: 1785572775}
   readyButtonText: {fileID: 1145364062}
-  minPlayersToStart: 2
+  minPlayersToStart: 1
   lobbyPads:
   - {fileID: 34079565}
   - {fileID: 2143543697}
