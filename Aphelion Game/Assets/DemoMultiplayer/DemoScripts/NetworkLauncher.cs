@@ -576,35 +576,38 @@ IEnumerator FadeAndLoad()
 
 IEnumerator FadeScreen()
 {
-    Debug.Log("[FADE] Starting screen fade.");
-
     if (fadePanel == null)
     {
-        Debug.LogError("[FADE] Fade Panel is NOT assigned!");
+        Debug.LogError("[FADE] FadePanel is not assigned!");
         yield break;
     }
 
+    Debug.Log("[FADE] Activating black screen.");
+
+    // Start completely transparent.
+    fadePanel.color = new Color(0f, 0f, 0f, 0f);
+
+    // Activate the panel.
     fadePanel.gameObject.SetActive(true);
     fadePanel.raycastTarget = true;
 
-    float t = 0f;
+    float elapsed = 0f;
 
-    while (t < fadeDuration)
+    while (elapsed < fadeDuration)
     {
-        t += Time.unscaledDeltaTime;
+        elapsed += Time.unscaledDeltaTime;
 
-        Color c = fadePanel.color;
-        c.a = Mathf.Clamp01(t / fadeDuration);
-        fadePanel.color = c;
+        float alpha = Mathf.Clamp01(elapsed / fadeDuration);
+
+        fadePanel.color = new Color(0f, 0f, 0f, alpha);
 
         yield return null;
     }
 
-    Color end = fadePanel.color;
-    end.a = 1f;
-    fadePanel.color = end;
+    // Guarantee completely black.
+    fadePanel.color = Color.black;
 
-    Debug.Log("[FADE] Screen completely black.");
+    Debug.Log("[FADE] Screen fully black.");
 }
 
 void RegisterGameStartMessage()
