@@ -148,6 +148,8 @@ public class NetworkLauncher : MonoBehaviour
     // ---------- host ----------
     public async void HostRoom()
     {
+
+        Debug.Log("HOST CLICKED");
         if (busy) return;
 
         busy = true;
@@ -252,6 +254,7 @@ public class NetworkLauncher : MonoBehaviour
     // ---------- lobby ----------
     void EnterLobby()
     {
+        Debug.Log("[LOBBY] entered. pads=" + (lobbyPads == null ? 0 : lobbyPads.Length) + " menuCam=" + (menuCamera != null));
         myPad = -1;
         localReady = false;
         counting = false;
@@ -360,6 +363,7 @@ public class NetworkLauncher : MonoBehaviour
 
         var player = nm.LocalClient.PlayerObject;
         var pad = lobbyPads[index];
+        Debug.Log("[PAD] placing player on pad " + index + " (" + pad.name + ")");
 
         // top-center of the pedestal
         Vector3 pos = pad.position;
@@ -382,6 +386,7 @@ public class NetworkLauncher : MonoBehaviour
         if (cc != null) cc.enabled = false;
         player.transform.SetPositionAndRotation(pos, rot);
         if (cc != null) cc.enabled = true;
+        Debug.Log("[PAD] player is now at " + player.transform.position);
     }
 
     void HideLocalPlayerCameras()
