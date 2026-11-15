@@ -28,7 +28,7 @@ Material:
     - _FadeEnd: 700
     - _FadeStart: 150
     m_Colors:
-    - _BaseColor: {r: 0.34999996, g: 0.34999996, b: 0.36999997, a: 1}
+    - _BaseColor: {r: 0.43271625, g: 0.43271625, b: 0.49056602, a: 1}
     - _FadeColor: {r: 0.02, g: 0.024, b: 0.046999976, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
