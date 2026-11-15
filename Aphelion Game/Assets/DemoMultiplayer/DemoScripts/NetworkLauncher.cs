@@ -5,31 +5,67 @@ using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Multiplayer;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class NetworkLauncher : MonoBehaviour
 {
     public const int PartySize = 4;
+    const string ReadyKey = "ready";
 
-    [Header("Menu")]
-    public GameObject menuPanel;
+    // other scripts (PlayerMovement etc.) can check this; it stays true across scene loads
+    public static bool GameStarted { get; private set; }
+
+    enum MenuState { Main, Join, Lobby, Loading }
+    MenuState state = MenuState.Main;
+
+    [Header("Scene")]
+    public string gameSceneName = "MainScene"; // exact name, must be in Build Profiles > Scene List
+    public float countdownSeconds = 3f;
+
+    [Header("Panels")]
+    public GameObject mainPanel;
+    public GameObject joinPanel;
+    public GameObject lobbyPanel;
     public GameObject menuCamera;
+
+    [Header("Main / Join")]
     public Button hostButton;
     public Button joinButton;
+    public Button joinConfirmButton;
+    public Button backButton;
     public TMP_InputField codeInput;
-    public TMP_Text statusText;
+    public TMP_Text statusText; // keep outside the panels
 
-    [Header("HUD")]
-    public GameObject hudPanel;
-    public TMP_Text roomCodeText;
-    public TMP_Text playersText;
+    [Header("Lobby")]
+    public TMP_Text lobbyCodeText;
+    public TMP_Text[] slotNames = new TMP_Text[PartySize];
+    public Image[] slotDots = new Image[PartySize];
+    public TMP_Text lobbyStatusText;  // "WAITING FOR PLAYERS..."
+    public TMP_Text countdownText;    // big 3 / 2 / 1 (optional)
+    public Button readyButton;
+    public TMP_Text readyButtonText;
+    public int minPlayersToStart = 1; // set to 2+ for real games
+
+    [Header("Lobby pads")]
+    public Transform[] lobbyPads;     // the 4 pedestals, in order Player 1 to 4
+    public float standOffset = 0.02f; // raise or lower if feet float or sink
 
     ISession session;
     string currentCode = "";
     bool busy;
     bool ready;
     bool leaving;
-    float countTimer;
+    bool localReady;
+    bool counting;
+    float countdownLeft;
+    float pollTimer;
+    int myPad = -1;
+    Task signInTask;
+
+    static readonly Color EmptyColor = new Color(0.4f, 0.4f, 0.45f);
+    static readonly Color JoinedColor = new Color(1f, 0.9f, 0.1f);
+    static readonly Color ReadyColor = new Color(0.2f, 1f, 0.3f);
 
     // ---------- helpers ----------
     static async Task WithTimeout(Task task, int seconds, string what)
@@ -51,7 +87,8 @@ public class NetworkLauncher : MonoBehaviour
     // ---------- startup ----------
     async void Start()
     {
-        ShowMenu("Connecting to Unity services...");
+        GameStarted = false;
+        Show(MenuState.Main, "Connecting to Unity services...");
         await SignIn();
 
         var nm = NetworkManager.Singleton;
@@ -64,38 +101,49 @@ public class NetworkLauncher : MonoBehaviour
         if (nm != null) nm.OnClientDisconnectCallback -= OnClientDisconnected;
     }
 
-    Task signInTask;
-
-async Task DoSignIn()
-{
-    if (UnityServices.State != ServicesInitializationState.Initialized)
-        await UnityServices.InitializeAsync();
-
-    if (!AuthenticationService.Instance.IsSignedIn)
-        await AuthenticationService.Instance.SignInAnonymouslyAsync();
-}
-
-async Task SignIn()
-{
-    try
+    async Task DoSignIn()
     {
-        statusText.text = "Connecting to Unity services...";
+        if (UnityServices.State != ServicesInitializationState.Initialized)
+            await UnityServices.InitializeAsync();
 
-        if (signInTask == null || signInTask.IsFaulted || signInTask.IsCanceled)
-            signInTask = DoSignIn();
-
-        await WithTimeout(signInTask, 30, "Sign in");
-
-        ready = true;
-        statusText.text = "Ready";
+        if (!AuthenticationService.Instance.IsSignedIn)
+            await AuthenticationService.Instance.SignInAnonymouslyAsync();
     }
-    catch (System.Exception e)
+
+    async Task SignIn()
     {
-        ready = false;
-        statusText.text = "Could not connect: " + e.Message;
-        Debug.LogError("SIGN IN ERROR: " + e);
+        try
+        {
+            statusText.text = "Connecting to Unity services...";
+
+            if (signInTask == null || signInTask.IsFaulted || signInTask.IsCanceled)
+                signInTask = DoSignIn();
+
+            await WithTimeout(signInTask, 30, "Sign in");
+
+            ready = true;
+            statusText.text = "Ready";
+        }
+        catch (System.Exception e)
+        {
+            ready = false;
+            statusText.text = "Could not connect: " + e.Message;
+            Debug.LogError("SIGN IN ERROR: " + e);
+        }
     }
-}
+
+    // ---------- screen buttons ----------
+    public void ShowJoin()
+    {
+        if (busy) return;
+        Show(MenuState.Join, "");
+    }
+
+    public void BackToMain()
+    {
+        if (busy) return;
+        Show(MenuState.Main, "");
+    }
 
     // ---------- host ----------
     public async void HostRoom()
@@ -111,7 +159,6 @@ async Task SignIn()
             if (!ready) return;
 
             statusText.text = "Creating room...";
-            Debug.Log("[HOST] creating session with WSS relay");
 
             var options = new SessionOptions
             {
@@ -131,27 +178,17 @@ async Task SignIn()
             {
                 Debug.LogError("[HOST] network did not start or player did not spawn");
                 await LeaveSessionQuietly();
-                ShowMenu("Room was created but the game could not start. Check Console.");
+                Show(MenuState.Main, "Room was created but the game could not start. Check Console.");
                 return;
             }
 
-            var nm = NetworkManager.Singleton;
-            if (nm == null || nm.LocalClient == null || nm.LocalClient.PlayerObject == null)
-            {
-                Debug.LogError("[HOST] player object was not spawned");
-                await LeaveSessionQuietly();
-                ShowMenu("Player failed to spawn.");
-                return;
-            }
-
-            ShowGame();
-            Debug.Log("[HOST] game started");
+            EnterLobby();
         }
         catch (System.Exception e)
         {
             Debug.LogError("HOST ERROR: " + e);
             await LeaveSessionQuietly();
-            ShowMenu("Could not create room: " + e.Message);
+            Show(MenuState.Main, "Could not create room: " + e.Message);
         }
         finally
         {
@@ -161,81 +198,225 @@ async Task SignIn()
     }
 
     // ---------- join ----------
-    
-public async void JoinRoom()
-{
-    if (busy) return;
-
-    string code = codeInput.text.Trim().ToUpper();
-
-    if (code.Length == 0)
+    public async void JoinRoom()
     {
-        statusText.text = "Type a room code first.";
-        return;
-    }
+        if (busy) return;
 
-    busy = true;
-    SetMenuInteractable(false);
-
-    try
-    {
-        if (!ready) await SignIn();
-        if (!ready) return;
-
-        statusText.text = "Joining session...";
-        Debug.Log("[JOIN] Step 1: Starting session join");
-
-        session = await WithTimeout(
-            MultiplayerService.Instance.JoinSessionByCodeAsync(code),
-            30,
-            "Join room"
-        );
-
-        Debug.Log("[JOIN] Step 2: Session joined successfully");
-        Debug.Log("[JOIN] Session code: " + session.Code);
-
-        statusText.text = "Starting network...";
-
-        var nm = NetworkManager.Singleton;
-
-        Debug.Log("[JOIN] NetworkManager listening: " + nm.IsListening);
-
-        bool connected = await WaitForNetwork();
-
-        if (!connected)
+        string code = codeInput.text.Trim().ToUpper();
+        if (code.Length == 0)
         {
-            Debug.LogError("[JOIN] Step 3: Network connection failed");
-
-            await LeaveSessionQuietly();
-            ShowMenu("Could not connect to host.");
+            statusText.text = "Type a room code first.";
             return;
         }
 
-        Debug.Log("[JOIN] Step 4: Successfully connected!");
+        busy = true;
+        SetMenuInteractable(false);
 
-        currentCode = session.Code;
-        ShowGame();
+        try
+        {
+            if (!ready) await SignIn();
+            if (!ready) return;
+
+            statusText.text = "Joining session...";
+
+            session = await WithTimeout(
+                MultiplayerService.Instance.JoinSessionByCodeAsync(code), 30, "Join room");
+
+            currentCode = session.Code;
+            statusText.text = "Starting network...";
+
+            bool connected = await WaitForNetwork();
+            if (!connected)
+            {
+                Debug.LogError("[JOIN] network connection failed");
+                await LeaveSessionQuietly();
+                Show(MenuState.Main, "Could not connect to host.");
+                return;
+            }
+
+            EnterLobby();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("[JOIN] FAILED: " + e);
+            await LeaveSessionQuietly();
+            Show(MenuState.Join, "Could not join: " + e.Message);
+        }
+        finally
+        {
+            busy = false;
+            SetMenuInteractable(true);
+        }
     }
-    catch (System.Exception e)
+
+    // ---------- lobby ----------
+    void EnterLobby()
     {
-        Debug.LogError("[JOIN] FAILED: " + e);
-
-        await LeaveSessionQuietly();
-
-        ShowMenu("Could not join: " + e.Message);
+        myPad = -1;
+        localReady = false;
+        counting = false;
+        GameStarted = false;
+        if (readyButtonText != null) readyButtonText.text = "Ready";
+        Show(MenuState.Lobby, "");
+        if (lobbyCodeText != null) lobbyCodeText.text = currentCode;
+        RefreshLobby();
     }
-    finally
+
+    public async void ToggleReady()
     {
-        busy = false;
-        SetMenuInteractable(true);
-    }
-}
+        if (session == null || state != MenuState.Lobby) return;
 
+        // can't back out during the last second of the countdown
+        if (counting && countdownLeft < 1f) return;
+
+        localReady = !localReady;
+        if (readyButtonText != null) readyButtonText.text = localReady ? "Unready" : "Ready";
+
+        try
+        {
+            session.CurrentPlayer.SetProperty(ReadyKey,
+                new PlayerProperty(value: localReady ? "1" : "0", visibility: VisibilityPropertyOptions.Member));
+            await session.SaveCurrentPlayerDataAsync();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Ready update failed: " + e);
+        }
+    }
+
+    static bool IsReady(IReadOnlyPlayer p)
+    {
+        if (p.Properties == null) return false;
+        return p.Properties.TryGetValue(ReadyKey, out var prop) && prop.Value == "1";
+    }
+
+    void RefreshLobby()
+    {
+        if (session == null) return;
+
+        var players = session.Players;
+        int count = players.Count;
+        string myId = AuthenticationService.Instance.PlayerId;
+
+        // put my astronaut on the pad that matches my slot
+        int mine = -1;
+        for (int i = 0; i < count; i++)
+            if (players[i].Id == myId) mine = i;
+
+        if (mine >= 0 && mine != myPad)
+        {
+            myPad = mine;
+            PlaceLocalPlayer(mine);
+        }
+        HideLocalPlayerCameras();
+
+        bool everyoneReady = count >= minPlayersToStart;
+
+        for (int i = 0; i < PartySize; i++)
+        {
+            if (slotNames == null || i >= slotNames.Length || slotNames[i] == null) continue;
+            bool hasDot = slotDots != null && i < slotDots.Length && slotDots[i] != null;
+
+            if (i < count)
+            {
+                bool r = IsReady(players[i]);
+                if (!r) everyoneReady = false;
+
+                bool me = players[i].Id == myId;
+                slotNames[i].text = "Player " + (i + 1) + (me ? " (You)" : "");
+                if (hasDot) slotDots[i].color = r ? ReadyColor : JoinedColor;
+            }
+            else
+            {
+                slotNames[i].text = "Player " + (i + 1);
+                if (hasDot) slotDots[i].color = EmptyColor;
+            }
+        }
+
+        if (everyoneReady && !counting)
+        {
+            counting = true;
+            countdownLeft = countdownSeconds;
+        }
+        else if (!everyoneReady && counting)
+        {
+            counting = false;
+        }
+
+        if (!counting)
+        {
+            if (lobbyStatusText != null)
+                lobbyStatusText.text = "WAITING FOR PLAYERS... (" + count + "/" + PartySize + ")";
+            if (countdownText != null) countdownText.gameObject.SetActive(false);
+        }
+    }
+
+    // ---------- pads ----------
+    void PlaceLocalPlayer(int index)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || nm.LocalClient == null || nm.LocalClient.PlayerObject == null) return;
+        if (lobbyPads == null || index < 0 || index >= lobbyPads.Length || lobbyPads[index] == null) return;
+
+        var player = nm.LocalClient.PlayerObject;
+        var pad = lobbyPads[index];
+
+        // top-center of the pedestal
+        Vector3 pos = pad.position;
+        var rend = pad.GetComponentInChildren<Renderer>();
+        if (rend != null)
+            pos = new Vector3(rend.bounds.center.x, rend.bounds.max.y, rend.bounds.center.z);
+        pos.y += standOffset;
+
+        // face the menu camera (flat, no tilt)
+        Quaternion rot = pad.rotation;
+        if (menuCamera != null)
+        {
+            Vector3 dir = menuCamera.transform.position - pos;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.001f) rot = Quaternion.LookRotation(dir);
+        }
+
+        // a CharacterController blocks direct teleports, so switch it off for a moment
+        var cc = player.GetComponent<CharacterController>();
+        if (cc != null) cc.enabled = false;
+        player.transform.SetPositionAndRotation(pos, rot);
+        if (cc != null) cc.enabled = true;
+    }
+
+    void HideLocalPlayerCameras()
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || nm.LocalClient == null || nm.LocalClient.PlayerObject == null) return;
+
+        foreach (var c in nm.LocalClient.PlayerObject.GetComponentsInChildren<Camera>(true)) c.enabled = false;
+        foreach (var l in nm.LocalClient.PlayerObject.GetComponentsInChildren<AudioListener>(true)) l.enabled = false;
+    }
+
+    // ---------- start game ----------
+    void FinishCountdown()
+    {
+        counting = false;
+        GameStarted = true;
+        state = MenuState.Loading;
+
+        if (lobbyStatusText != null) lobbyStatusText.text = "LAUNCHING...";
+        if (countdownText != null) countdownText.text = "GO!";
+
+        var nm = NetworkManager.Singleton;
+        if (nm != null && nm.IsHost)
+        {
+            // only the host loads the scene; clients follow automatically
+            var status = nm.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
+            if (status != SceneEventProgressStatus.Started)
+                Debug.LogError("Scene load did not start: " + status + " (is '" + gameSceneName + "' in the Scene List?)");
+        }
+    }
 
     // ---------- leave ----------
     public async void LeaveRoom()
     {
-        if (leaving || busy) return;
+        if (leaving || busy || state == MenuState.Loading) return;
 
         leaving = true;
         busy = true;
@@ -244,12 +425,12 @@ public async void JoinRoom()
         {
             await LeaveSessionQuietly();
             currentCode = "";
-            ShowMenu("Left the room.");
+            Show(MenuState.Main, "Left the room.");
         }
         catch (System.Exception e)
         {
             Debug.LogError("Error leaving room: " + e);
-            ShowMenu("Returned to menu.");
+            Show(MenuState.Main, "Returned to menu.");
         }
         finally
         {
@@ -293,6 +474,11 @@ public async void JoinRoom()
 
     async Task LeaveSessionQuietly()
     {
+        GameStarted = false;
+        localReady = false;
+        counting = false;
+        myPad = -1;
+
         try
         {
             if (session != null) await session.LeaveAsync();
@@ -310,48 +496,56 @@ public async void JoinRoom()
     async void OnClientDisconnected(ulong clientId)
     {
         var nm = NetworkManager.Singleton;
-        if (leaving || nm == null || clientId != nm.LocalClientId || !hudPanel.activeSelf) return;
+        if (leaving || nm == null || clientId != nm.LocalClientId || state != MenuState.Lobby) return;
 
         await Task.Yield();
         leaving = true;
         await LeaveSessionQuietly();
-        ShowMenu("Disconnected from the room.");
+        Show(MenuState.Main, "Disconnected from the room.");
         leaving = false;
     }
 
     // ---------- UI ----------
     void Update()
     {
-        if (!hudPanel.activeSelf) return;
+        if (state != MenuState.Lobby) return;
 
-        var nm = NetworkManager.Singleton;
-        if (menuCamera.activeSelf && nm != null && nm.LocalClient != null && nm.LocalClient.PlayerObject != null)
-            menuCamera.SetActive(false);
+        pollTimer -= Time.deltaTime;
+        if (pollTimer <= 0f)
+        {
+            pollTimer = 0.5f;
+            RefreshLobby();
+        }
 
-        if (playersText == null) return;
-        countTimer -= Time.deltaTime;
-        if (countTimer > 0f) return;
-        countTimer = 0.5f;
+        if (counting)
+        {
+            countdownLeft -= Time.deltaTime;
+            int n = Mathf.Max(1, Mathf.CeilToInt(countdownLeft));
 
-        int count = 0;
-        foreach (var no in FindObjectsByType<NetworkObject>(FindObjectsSortMode.None))
-            if (no.IsPlayerObject) count++;
-        playersText.text = "Players: " + count + "/" + PartySize;
+            if (lobbyStatusText != null) lobbyStatusText.text = "STARTING IN " + n;
+            if (countdownText != null)
+            {
+                countdownText.gameObject.SetActive(true);
+                countdownText.text = n.ToString();
+            }
+
+            if (countdownLeft <= 0f) FinishCountdown();
+        }
     }
 
-    void ShowGame()
+    void Show(MenuState newState, string message)
     {
-        menuPanel.SetActive(false);
-        hudPanel.SetActive(true);
-        roomCodeText.text = "Room code: " + currentCode;
-    }
+        state = newState;
 
-    void ShowMenu(string message)
-    {
-        hudPanel.SetActive(false);
-        menuPanel.SetActive(true);
-        menuCamera.SetActive(true);
-        statusText.text = message;
+        if (mainPanel != null) mainPanel.SetActive(newState == MenuState.Main);
+        if (joinPanel != null) joinPanel.SetActive(newState == MenuState.Join);
+        if (lobbyPanel != null) lobbyPanel.SetActive(newState == MenuState.Lobby || newState == MenuState.Loading);
+        if (countdownText != null && newState != MenuState.Loading) countdownText.gameObject.SetActive(false);
+
+        if (menuCamera != null) menuCamera.SetActive(true);
+
+        if (message != null && statusText != null) statusText.text = message;
+
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }
@@ -360,6 +554,8 @@ public async void JoinRoom()
     {
         if (hostButton != null) hostButton.interactable = on;
         if (joinButton != null) joinButton.interactable = on;
+        if (joinConfirmButton != null) joinConfirmButton.interactable = on;
+        if (backButton != null) backButton.interactable = on;
         if (codeInput != null) codeInput.interactable = on;
     }
 }
