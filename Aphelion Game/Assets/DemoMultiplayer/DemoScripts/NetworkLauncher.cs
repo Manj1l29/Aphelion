@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Threading.Tasks;
 using TMPro;
 using Unity.Netcode;
@@ -21,6 +22,8 @@ public class NetworkLauncher : MonoBehaviour
     [Header("Scene")]
     public string gameSceneName = "MainScene";
     public float countdownSeconds = 3f;
+    public Image fadePanel;          // black Panel (Image), last child of the Canvas
+    public float fadeDuration = 1f;
 
     [Header("Panels")]
     public GameObject mainPanel;
@@ -48,7 +51,7 @@ public class NetworkLauncher : MonoBehaviour
 
     [Header("Lobby pads")]
     public Transform[] lobbyPads;     // the 4 podiums, Player 1 to 4
-    public float standOffset = 0.02f; // raise or lower if feet float or sink
+    public float standOffset = 0.02f;
 
     ISession session;
     string currentCode = "";
@@ -85,6 +88,12 @@ public class NetworkLauncher : MonoBehaviour
     // ---------- startup ----------
     async void Start()
     {
+        if (fadePanel != null)
+        {
+            var c = fadePanel.color; c.a = 0f; fadePanel.color = c;
+            fadePanel.raycastTarget = false;
+        }
+
         GameStarted = false;
         Show(MenuState.Main, "Connecting to Unity services...");
         await SignIn();
@@ -174,7 +183,7 @@ public class NetworkLauncher : MonoBehaviour
 
             if (!connected)
             {
-                Debug.LogError("[HOST] network did not start or player did not spawn");
+                Debug.LogError("[HOST] network did not start or avatar did not spawn");
                 await LeaveSessionQuietly();
                 Show(MenuState.Main, "Room was created but the game could not start. Check Console.");
                 return;
@@ -220,7 +229,7 @@ public class NetworkLauncher : MonoBehaviour
             session = await WithTimeout(
                 MultiplayerService.Instance.JoinSessionByCodeAsync(code), 30, "Join room");
 
-            currentCode = session.Code;
+            currentCode = string.IsNullOrEmpty(session.Code) ? code : session.Code;
             statusText.text = "Starting network...";
 
             bool connected = await WaitForNetwork();
@@ -251,6 +260,7 @@ public class NetworkLauncher : MonoBehaviour
     void EnterLobby()
     {
         Debug.Log("[LOBBY] entering. lobbyPanel=" + (lobbyPanel != null ? lobbyPanel.name : "NULL"));
+
         localReady = false;
         counting = false;
         GameStarted = false;
@@ -294,7 +304,7 @@ public class NetworkLauncher : MonoBehaviour
         int count = players.Count;
         string myId = AuthenticationService.Instance.PlayerId;
 
-        PlaceAvatars(); // host only, no-op for clients
+        PlaceAvatars(); // host only, does nothing for clients
 
         bool everyoneReady = count >= minPlayersToStart;
 
@@ -381,9 +391,32 @@ public class NetworkLauncher : MonoBehaviour
         if (lobbyStatusText != null) lobbyStatusText.text = "LAUNCHING...";
         if (countdownText != null) countdownText.text = "GO!";
 
+        StartCoroutine(FadeAndLoad());
+    }
+
+    IEnumerator FadeAndLoad()
+    {
+        if (fadePanel != null)
+        {
+            fadePanel.gameObject.SetActive(true);
+            fadePanel.raycastTarget = true;
+
+            float t = 0f;
+            while (t < fadeDuration)
+            {
+                t += Time.deltaTime;
+                var c = fadePanel.color;
+                c.a = Mathf.Clamp01(t / fadeDuration);
+                fadePanel.color = c;
+                yield return null;
+            }
+            var end = fadePanel.color; end.a = 1f; fadePanel.color = end;
+        }
+
         var nm = NetworkManager.Singleton;
         if (nm != null && nm.IsHost)
         {
+            // only the host loads the scene; clients follow automatically
             var status = nm.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
             if (status != SceneEventProgressStatus.Started)
                 Debug.LogError("Scene load did not start: " + status + " (is '" + gameSceneName + "' in the Scene List?)");
