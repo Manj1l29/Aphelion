@@ -8,11 +8,14 @@ using Unity.Services.Multiplayer;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using System.Collections.Generic;
+using Unity.Collections;
 
 public class NetworkLauncher : MonoBehaviour
 {
     public const int PartySize = 4;
     const string ReadyKey = "ready";
+    const string StartGameMessage = "LobbyStartGame";
 
     public static bool GameStarted { get; private set; }
 
@@ -44,7 +47,6 @@ public class NetworkLauncher : MonoBehaviour
     public TMP_Text[] slotNames = new TMP_Text[PartySize];
     public Image[] slotDots = new Image[PartySize];
     public TMP_Text lobbyStatusText;
-    public TMP_Text countdownText;
     public Button readyButton;
     public TMP_Text readyButtonText;
     public int minPlayersToStart = 1;
@@ -87,26 +89,51 @@ public class NetworkLauncher : MonoBehaviour
 
     // ---------- startup ----------
     async void Start()
+{
+    if (fadePanel != null)
     {
-        if (fadePanel != null)
-        {
-            var c = fadePanel.color; c.a = 0f; fadePanel.color = c;
-            fadePanel.raycastTarget = false;
-        }
-
-        GameStarted = false;
-        Show(MenuState.Main, "Connecting to Unity services...");
-        await SignIn();
-
-        var nm = NetworkManager.Singleton;
-        if (nm != null) nm.OnClientDisconnectCallback += OnClientDisconnected;
+        var c = fadePanel.color;
+        c.a = 0f;
+        fadePanel.color = c;
+        fadePanel.raycastTarget = false;
     }
+
+    GameStarted = false;
+
+    Show(MenuState.Main, "Connecting to Unity services...");
+
+    await SignIn();
+
+    var nm = NetworkManager.Singleton;
+
+    if (nm != null)
+    {
+        nm.OnClientDisconnectCallback += OnClientDisconnected;
+
+        nm.CustomMessagingManager.RegisterNamedMessageHandler(
+            StartGameMessage,
+            OnStartGameMessage
+        );
+    }
+}
+    
 
     void OnDestroy()
+{
+    var nm = NetworkManager.Singleton;
+
+    if (nm != null)
     {
-        var nm = NetworkManager.Singleton;
-        if (nm != null) nm.OnClientDisconnectCallback -= OnClientDisconnected;
+        nm.OnClientDisconnectCallback -= OnClientDisconnected;
+
+        if (nm.CustomMessagingManager != null)
+        {
+            nm.CustomMessagingManager.UnregisterNamedMessageHandler(
+                StartGameMessage
+            );
+        }
     }
+}
 
     async Task DoSignIn()
     {
@@ -257,16 +284,22 @@ public class NetworkLauncher : MonoBehaviour
     }
 
     // ---------- lobby ----------
-    void EnterLobby()
+   void EnterLobby()
     {
-        Debug.Log("[LOBBY] entering. lobbyPanel=" + (lobbyPanel != null ? lobbyPanel.name : "NULL"));
+        Debug.Log("[LOBBY] Entering lobby.");
 
         localReady = false;
         counting = false;
         GameStarted = false;
-        if (readyButtonText != null) readyButtonText.text = "Ready";
+
+        if (readyButtonText != null)
+        readyButtonText.text = "Ready";
+
         Show(MenuState.Lobby, "");
-        if (lobbyCodeText != null) lobbyCodeText.text = currentCode;
+
+        if (lobbyCodeText != null)
+        lobbyCodeText.text = currentCode;
+
         RefreshLobby();
     }
 
@@ -296,132 +329,252 @@ public class NetworkLauncher : MonoBehaviour
         return p.Properties.TryGetValue(ReadyKey, out var prop) && prop.Value == "1";
     }
 
-    void RefreshLobby()
+   void RefreshLobby()
+{
+    if (session == null) return;
+
+    var players = session.Players;
+    int count = players.Count;
+
+    string myId = AuthenticationService.Instance.PlayerId;
+
+    PlaceAvatars();
+
+    bool everyoneReady = count >= minPlayersToStart;
+
+    for (int i = 0; i < PartySize; i++)
     {
-        if (session == null) return;
+        if (slotNames == null || i >= slotNames.Length || slotNames[i] == null)
+            continue;
 
-        var players = session.Players;
-        int count = players.Count;
-        string myId = AuthenticationService.Instance.PlayerId;
+        bool hasDot = slotDots != null &&
+                      i < slotDots.Length &&
+                      slotDots[i] != null;
 
-        PlaceAvatars(); // host only, does nothing for clients
-
-        bool everyoneReady = count >= minPlayersToStart;
-
-        for (int i = 0; i < PartySize; i++)
+        if (i < count)
         {
-            if (slotNames == null || i >= slotNames.Length || slotNames[i] == null) continue;
-            bool hasDot = slotDots != null && i < slotDots.Length && slotDots[i] != null;
+            bool r = IsReady(players[i]);
 
-            if (i < count)
-            {
-                bool r = IsReady(players[i]);
-                if (!r) everyoneReady = false;
+            if (!r)
+                everyoneReady = false;
 
-                bool me = players[i].Id == myId;
-                slotNames[i].text = "Player " + (i + 1) + (me ? " (You)" : "");
-                if (hasDot) slotDots[i].color = r ? ReadyColor : JoinedColor;
-            }
-            else
-            {
-                slotNames[i].text = "Player " + (i + 1);
-                if (hasDot) slotDots[i].color = EmptyColor;
-            }
+            bool me = players[i].Id == myId;
+
+            slotNames[i].text = "Player " + (i + 1) + (me ? " (You)" : "");
+
+            if (hasDot)
+                slotDots[i].color = r ? ReadyColor : JoinedColor;
         }
+        else
+        {
+            slotNames[i].text = "Player " + (i + 1);
 
-        if (everyoneReady && !counting)
-        {
-            counting = true;
-            countdownLeft = countdownSeconds;
-        }
-        else if (!everyoneReady && counting)
-        {
-            counting = false;
-        }
-
-        if (!counting)
-        {
-            if (lobbyStatusText != null)
-                lobbyStatusText.text = "WAITING FOR PLAYERS... (" + count + "/" + PartySize + ")";
-            if (countdownText != null) countdownText.gameObject.SetActive(false);
+            if (hasDot)
+                slotDots[i].color = EmptyColor;
         }
     }
 
-    // ---------- podiums (host only) ----------
-    void PlaceAvatars()
+    if (everyoneReady && !counting)
     {
-        var nm = NetworkManager.Singleton;
-        if (nm == null || !nm.IsServer) return;
-        if (lobbyPads == null) return;
-
-        var clients = nm.ConnectedClientsList;
-        for (int i = 0; i < clients.Count && i < lobbyPads.Length; i++)
-        {
-            var avatar = clients[i].PlayerObject;
-            var pad = lobbyPads[i];
-            if (avatar == null || pad == null) continue;
-
-            // top-center of the podium
-            Vector3 pos = pad.position;
-            var rend = pad.GetComponentInChildren<Renderer>();
-            if (rend != null)
-                pos = new Vector3(rend.bounds.center.x, rend.bounds.max.y, rend.bounds.center.z);
-            pos.y += standOffset;
-
-            // face the menu camera (flat, no tilt)
-            Quaternion rot = pad.rotation;
-            if (menuCamera != null)
-            {
-                Vector3 dir = menuCamera.transform.position - pos;
-                dir.y = 0f;
-                if (dir.sqrMagnitude > 0.001f) rot = Quaternion.LookRotation(dir);
-            }
-
-            avatar.transform.SetPositionAndRotation(pos, rot);
-        }
+        counting = true;
+        countdownLeft = countdownSeconds;
     }
-
-    // ---------- start game ----------
-    void FinishCountdown()
+    else if (!everyoneReady && counting)
     {
         counting = false;
-        GameStarted = true;
-        state = MenuState.Loading;
-
-        if (lobbyStatusText != null) lobbyStatusText.text = "LAUNCHING...";
-        if (countdownText != null) countdownText.text = "GO!";
-
-        StartCoroutine(FadeAndLoad());
     }
 
-    IEnumerator FadeAndLoad()
+    if (!counting && lobbyStatusText != null)
     {
-        if (fadePanel != null)
-        {
-            fadePanel.gameObject.SetActive(true);
-            fadePanel.raycastTarget = true;
+        lobbyStatusText.text =
+            "WAITING FOR PLAYERS... (" + count + "/" + PartySize + ")";
+    }
+}
 
-            float t = 0f;
-            while (t < fadeDuration)
-            {
-                t += Time.deltaTime;
-                var c = fadePanel.color;
-                c.a = Mathf.Clamp01(t / fadeDuration);
-                fadePanel.color = c;
-                yield return null;
-            }
-            var end = fadePanel.color; end.a = 1f; fadePanel.color = end;
-        }
+    // ---------- podiums (host only) ----------
+    
+// ---------- podiums ----------
+void PlaceAvatars()
+{
+    var nm = NetworkManager.Singleton;
 
-        var nm = NetworkManager.Singleton;
-        if (nm != null && nm.IsHost)
+    if (nm == null || !nm.IsListening || lobbyPads == null)
+        return;
+
+    if (nm.LocalClient == null || nm.SpawnManager == null)
+        return;
+
+    List<NetworkObject> players = new List<NetworkObject>();
+
+    foreach (var obj in nm.SpawnManager.SpawnedObjectsList)
+    {
+        if (obj != null && obj.IsPlayerObject)
+            players.Add(obj);
+    }
+
+    // Host gets podium 1, subsequent players get the next podiums.
+    players.Sort((a, b) =>
+        a.OwnerClientId.CompareTo(b.OwnerClientId));
+
+    int mySlot = players.FindIndex(
+        p => p.OwnerClientId == nm.LocalClientId
+    );
+
+    if (mySlot < 0 || mySlot >= lobbyPads.Length)
+        return;
+
+    var avatar = nm.LocalClient.PlayerObject;
+
+    if (avatar == null)
+        return;
+
+    Transform pad = lobbyPads[mySlot];
+
+    if (pad == null)
+        return;
+
+    Vector3 pos = pad.position;
+
+    var rend = pad.GetComponentInChildren<Renderer>();
+
+    if (rend != null)
+    {
+        pos = new Vector3(
+            rend.bounds.center.x,
+            rend.bounds.max.y,
+            rend.bounds.center.z
+        );
+    }
+
+    pos.y += standOffset;
+
+    Quaternion rot = pad.rotation;
+
+    if (menuCamera != null)
+    {
+        Vector3 dir = menuCamera.transform.position - pos;
+        dir.y = 0f;
+
+        if (dir.sqrMagnitude > 0.001f)
+            rot = Quaternion.LookRotation(dir);
+    }
+
+    var controller = avatar.GetComponent<CharacterController>();
+
+    bool wasEnabled = controller != null && controller.enabled;
+
+    if (wasEnabled)
+        controller.enabled = false;
+
+    avatar.transform.SetPositionAndRotation(pos, rot);
+
+    if (wasEnabled)
+        controller.enabled = true;
+}
+
+void OnStartGameMessage(
+    ulong senderClientId,
+    FastBufferReader reader)
+{
+    var nm = NetworkManager.Singleton;
+
+    if (nm == null ||
+        senderClientId != NetworkManager.ServerClientId)
+        return;
+
+    if (state == MenuState.Loading)
+        return;
+
+    counting = false;
+    GameStarted = true;
+    state = MenuState.Loading;
+
+    if (lobbyStatusText != null)
+        lobbyStatusText.text = "LAUNCHING...";
+
+    StartCoroutine(FadeScreen());
+}
+
+    void FinishCountdown()
+{
+    counting = false;
+
+    var nm = NetworkManager.Singleton;
+
+    // Only host launches the game.
+    if (nm == null || !nm.IsHost)
+        return;
+
+    GameStarted = true;
+    state = MenuState.Loading;
+
+    if (lobbyStatusText != null)
+        lobbyStatusText.text = "LAUNCHING...";
+
+    // Tell every connected player to fade.
+    using (var writer = new FastBufferWriter(1, Allocator.Temp))
+    {
+        nm.CustomMessagingManager.SendNamedMessageToAll(
+            StartGameMessage,
+            writer,
+            NetworkDelivery.Reliable
+        );
+    }
+
+    // Host fades and loads MainScene.
+    StartCoroutine(FadeAndLoad());
+}
+
+IEnumerator FadeAndLoad()
+{
+    // Fade the host's screen to black.
+    yield return StartCoroutine(FadeScreen());
+
+    var nm = NetworkManager.Singleton;
+
+    // Host loads the scene; clients follow through Netcode.
+    if (nm != null && nm.IsHost)
+    {
+        var status = nm.SceneManager.LoadScene(
+            "MainScene",
+            LoadSceneMode.Single
+        );
+
+        if (status != SceneEventProgressStatus.Started)
         {
-            // only the host loads the scene; clients follow automatically
-            var status = nm.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
-            if (status != SceneEventProgressStatus.Started)
-                Debug.LogError("Scene load did not start: " + status + " (is '" + gameSceneName + "' in the Scene List?)");
+            Debug.LogError("Scene load failed: " + status);
         }
     }
+}
+
+IEnumerator FadeScreen()
+{
+    if (fadePanel == null)
+    {
+        Debug.LogError("Fade Panel is not assigned!");
+        yield break;
+    }
+
+    fadePanel.gameObject.SetActive(true);
+    fadePanel.raycastTarget = true;
+
+    float t = 0f;
+
+    while (t < fadeDuration)
+    {
+        t += Time.deltaTime;
+
+        Color c = fadePanel.color;
+        c.a = Mathf.Clamp01(t / fadeDuration);
+        fadePanel.color = c;
+
+        yield return null;
+    }
+
+    Color end = fadePanel.color;
+    end.a = 1f;
+    fadePanel.color = end;
+}
 
     // ---------- leave ----------
     public async void LeaveRoom()
@@ -516,49 +669,57 @@ public class NetworkLauncher : MonoBehaviour
 
     // ---------- UI ----------
     void Update()
+{
+    if (state != MenuState.Lobby)
+        return;
+
+    pollTimer -= Time.deltaTime;
+
+    if (pollTimer <= 0f)
     {
-        if (state != MenuState.Lobby) return;
-
-        pollTimer -= Time.deltaTime;
-        if (pollTimer <= 0f)
-        {
-            pollTimer = 0.5f;
-            RefreshLobby();
-        }
-
-        if (counting)
-        {
-            countdownLeft -= Time.deltaTime;
-            int n = Mathf.Max(1, Mathf.CeilToInt(countdownLeft));
-
-            if (lobbyStatusText != null) lobbyStatusText.text = "STARTING IN " + n;
-            if (countdownText != null)
-            {
-                countdownText.gameObject.SetActive(true);
-                countdownText.text = n.ToString();
-            }
-
-            if (countdownLeft <= 0f) FinishCountdown();
-        }
+        pollTimer = 0.5f;
+        RefreshLobby();
     }
+
+    if (counting)
+    {
+        countdownLeft -= Time.deltaTime;
+
+        int n = Mathf.Max(1, Mathf.CeilToInt(countdownLeft));
+
+        if (lobbyStatusText != null)
+            lobbyStatusText.text = "STARTING IN " + n;
+
+        if (countdownLeft <= 0f)
+            FinishCountdown();
+    }
+}
 
     void Show(MenuState newState, string message)
-    {
-        state = newState;
+{
+    state = newState;
 
-        if (mainPanel != null) mainPanel.SetActive(newState == MenuState.Main);
-        if (joinPanel != null) joinPanel.SetActive(newState == MenuState.Join);
-        if (lobbyPanel != null) lobbyPanel.SetActive(newState == MenuState.Lobby || newState == MenuState.Loading);
-        if (countdownText != null && newState != MenuState.Loading) countdownText.gameObject.SetActive(false);
+    if (mainPanel != null)
+        mainPanel.SetActive(newState == MenuState.Main);
 
-        if (menuCamera != null) menuCamera.SetActive(true);
+    if (joinPanel != null)
+        joinPanel.SetActive(newState == MenuState.Join);
 
-        if (message != null && statusText != null) statusText.text = message;
+    if (lobbyPanel != null)
+        lobbyPanel.SetActive(
+            newState == MenuState.Lobby ||
+            newState == MenuState.Loading
+        );
 
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-    }
+    if (menuCamera != null)
+        menuCamera.SetActive(true);
 
+    if (!string.IsNullOrEmpty(message) && statusText != null)
+        statusText.text = message;
+
+    Cursor.lockState = CursorLockMode.None;
+    Cursor.visible = true;
+}
     void SetMenuInteractable(bool on)
     {
         if (hostButton != null) hostButton.interactable = on;
