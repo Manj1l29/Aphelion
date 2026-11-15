@@ -1,6 +1,6 @@
 
-using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -8,50 +8,32 @@ using UnityEngine.SceneManagement;
 public class GameplayPlayerSpawner : MonoBehaviour
 {
     [Header("Gameplay Player")]
-    [SerializeField] private NetworkObject gameplayPlayerPrefab;
+    public NetworkObject gameplayPlayerPrefab;
+
+    [Header("Spawn Points")]
+    public Transform[] spawnPoints = new Transform[4];
 
     private bool hasSpawnedPlayers;
 
-    private void Awake()
-    {
-        DontDestroyOnLoad(gameObject);
-    }
-
     private void OnEnable()
     {
-        StartCoroutine(WaitForNetwork());
-    }
+        var nm = NetworkManager.Singleton;
 
-    private IEnumerator WaitForNetwork()
-    {
-        while (NetworkManager.Singleton == null ||
-               !NetworkManager.Singleton.IsListening)
+        if (nm != null && nm.SceneManager != null)
         {
-            yield return null;
+            nm.SceneManager.OnLoadEventCompleted -= OnSceneLoaded;
+            nm.SceneManager.OnLoadEventCompleted += OnSceneLoaded;
         }
-
-        NetworkManager nm = NetworkManager.Singleton;
-
-        if (nm.SceneManager == null)
-        {
-            Debug.LogError("[SPAWNER] Scene Manager unavailable!");
-            yield break;
-        }
-
-        nm.SceneManager.OnLoadEventCompleted -= OnSceneLoaded;
-        nm.SceneManager.OnLoadEventCompleted += OnSceneLoaded;
-
-        Debug.Log("[SPAWNER] Listening for scene changes.");
     }
 
     private void OnDisable()
     {
-        StopAllCoroutines();
-
-        NetworkManager nm = NetworkManager.Singleton;
+        var nm = NetworkManager.Singleton;
 
         if (nm != null && nm.SceneManager != null)
+        {
             nm.SceneManager.OnLoadEventCompleted -= OnSceneLoaded;
+        }
     }
 
     private void OnSceneLoaded(
@@ -63,73 +45,57 @@ public class GameplayPlayerSpawner : MonoBehaviour
         if (sceneName != "MainScene")
             return;
 
-        NetworkManager nm = NetworkManager.Singleton;
+        var nm = NetworkManager.Singleton;
 
         if (nm == null || !nm.IsServer || hasSpawnedPlayers)
             return;
 
-        Debug.Log("[SPAWNER] MainScene loaded!");
+        Debug.Log("[SPAWNER] MainScene loaded. Preparing players.");
 
         if (gameplayPlayerPrefab == null)
         {
-            Debug.LogError("[SPAWNER] Gameplay Player Prefab missing!");
+            Debug.LogError("[SPAWNER] Player prefab is not assigned!");
             return;
         }
 
-        // Find the spawn point parent in MainScene.
-        GameObject spawnParent = GameObject.Find("GameplaySpawnPoints");
+        // Sort clients so spawn assignments are consistent.
+        var clients = nm.ConnectedClientsList
+            .OrderBy(client => client.ClientId)
+            .ToList();
 
-        if (spawnParent == null)
+        // Validate all required spawn points first.
+        if (spawnPoints == null || spawnPoints.Length < clients.Count)
         {
-            Debug.LogError("[SPAWNER] GameplaySpawnPoints object not found!");
+            Debug.LogError("[SPAWNER] Not enough spawn point slots!");
             return;
         }
 
-        // Get the four spawn point transforms by name.
-        string[] spawnNames =
+        for (int i = 0; i < clients.Count; i++)
         {
-            "PlayerSpawn1",
-            "PlayerSpawn2",
-            "PlayerSpawn3",
-            "PlayerSpawn4"
-        };
-
-        List<Transform> points = new List<Transform>();
-
-        foreach (string spawnName in spawnNames)
-        {
-            Transform point = spawnParent.transform.Find(spawnName);
-
-            if (point == null)
+            if (spawnPoints[i] == null)
             {
-                Debug.LogError("[SPAWNER] Missing " + spawnName);
+                Debug.LogError(
+                    "[SPAWNER] Spawn Point " + (i + 1) +
+                    " is EMPTY in the Inspector!"
+                );
                 return;
             }
-
-            points.Add(point);
         }
 
-        int playerCount = nm.ConnectedClientsList.Count;
-
-        if (playerCount > points.Count)
-        {
-            Debug.LogError("[SPAWNER] Not enough spawn points!");
-            return;
-        }
-
-        // Remove lobby avatars.
-        foreach (var client in nm.ConnectedClientsList)
+        // Remove old lobby player objects.
+        foreach (var client in clients)
         {
             if (client.PlayerObject != null)
+            {
                 client.PlayerObject.Despawn(true);
+            }
         }
 
-        // Spawn gameplay players.
-        int index = 0;
-
-        foreach (var client in nm.ConnectedClientsList)
+        // Spawn gameplay players at their assigned positions.
+        for (int i = 0; i < clients.Count; i++)
         {
-            Transform spawn = points[index];
+            var client = clients[i];
+            Transform spawn = spawnPoints[i];
 
             NetworkObject player = Instantiate(
                 gameplayPlayerPrefab,
@@ -141,14 +107,13 @@ public class GameplayPlayerSpawner : MonoBehaviour
 
             Debug.Log(
                 "[SPAWNER] Client " + client.ClientId +
-                " spawned at " + spawn.name
+                " spawned at " + spawn.name +
+                " | Position: " + spawn.position
             );
-
-            index++;
         }
 
         hasSpawnedPlayers = true;
 
-        Debug.Log("[SPAWNER] ALL PLAYERS SPAWNED!");
+        Debug.Log("[SPAWNER] ALL GAMEPLAY PLAYERS SPAWNED!");
     }
 }
