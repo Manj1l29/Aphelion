@@ -13,14 +13,13 @@ public class NetworkLauncher : MonoBehaviour
     public const int PartySize = 4;
     const string ReadyKey = "ready";
 
-    // other scripts (PlayerMovement etc.) can check this; it stays true across scene loads
     public static bool GameStarted { get; private set; }
 
     enum MenuState { Main, Join, Lobby, Loading }
     MenuState state = MenuState.Main;
 
     [Header("Scene")]
-    public string gameSceneName = "MainScene"; // exact name, must be in Build Profiles > Scene List
+    public string gameSceneName = "MainScene";
     public float countdownSeconds = 3f;
 
     [Header("Panels")]
@@ -35,20 +34,20 @@ public class NetworkLauncher : MonoBehaviour
     public Button joinConfirmButton;
     public Button backButton;
     public TMP_InputField codeInput;
-    public TMP_Text statusText; // keep outside the panels
+    public TMP_Text statusText;
 
     [Header("Lobby")]
     public TMP_Text lobbyCodeText;
     public TMP_Text[] slotNames = new TMP_Text[PartySize];
     public Image[] slotDots = new Image[PartySize];
-    public TMP_Text lobbyStatusText;  // "WAITING FOR PLAYERS..."
-    public TMP_Text countdownText;    // big 3 / 2 / 1 (optional)
+    public TMP_Text lobbyStatusText;
+    public TMP_Text countdownText;
     public Button readyButton;
     public TMP_Text readyButtonText;
-    public int minPlayersToStart = 1; // set to 2+ for real games
+    public int minPlayersToStart = 1;
 
     [Header("Lobby pads")]
-    public Transform[] lobbyPads;     // the 4 pedestals, in order Player 1 to 4
+    public Transform[] lobbyPads;     // the 4 podiums, Player 1 to 4
     public float standOffset = 0.02f; // raise or lower if feet float or sink
 
     ISession session;
@@ -60,7 +59,6 @@ public class NetworkLauncher : MonoBehaviour
     bool counting;
     float countdownLeft;
     float pollTimer;
-    int myPad = -1;
     Task signInTask;
 
     static readonly Color EmptyColor = new Color(0.4f, 0.4f, 0.45f);
@@ -148,8 +146,6 @@ public class NetworkLauncher : MonoBehaviour
     // ---------- host ----------
     public async void HostRoom()
     {
-
-        Debug.Log("HOST CLICKED");
         if (busy) return;
 
         busy = true;
@@ -254,8 +250,7 @@ public class NetworkLauncher : MonoBehaviour
     // ---------- lobby ----------
     void EnterLobby()
     {
-        Debug.Log("[LOBBY] entered. pads=" + (lobbyPads == null ? 0 : lobbyPads.Length) + " menuCam=" + (menuCamera != null));
-        myPad = -1;
+        Debug.Log("[LOBBY] entering. lobbyPanel=" + (lobbyPanel != null ? lobbyPanel.name : "NULL"));
         localReady = false;
         counting = false;
         GameStarted = false;
@@ -268,8 +263,6 @@ public class NetworkLauncher : MonoBehaviour
     public async void ToggleReady()
     {
         if (session == null || state != MenuState.Lobby) return;
-
-        // can't back out during the last second of the countdown
         if (counting && countdownLeft < 1f) return;
 
         localReady = !localReady;
@@ -301,17 +294,7 @@ public class NetworkLauncher : MonoBehaviour
         int count = players.Count;
         string myId = AuthenticationService.Instance.PlayerId;
 
-        // put my astronaut on the pad that matches my slot
-        int mine = -1;
-        for (int i = 0; i < count; i++)
-            if (players[i].Id == myId) mine = i;
-
-        if (mine >= 0 && mine != myPad)
-        {
-            myPad = mine;
-            PlaceLocalPlayer(mine);
-        }
-        HideLocalPlayerCameras();
+        PlaceAvatars(); // host only, no-op for clients
 
         bool everyoneReady = count >= minPlayersToStart;
 
@@ -354,48 +337,38 @@ public class NetworkLauncher : MonoBehaviour
         }
     }
 
-    // ---------- pads ----------
-    void PlaceLocalPlayer(int index)
+    // ---------- podiums (host only) ----------
+    void PlaceAvatars()
     {
         var nm = NetworkManager.Singleton;
-        if (nm == null || nm.LocalClient == null || nm.LocalClient.PlayerObject == null) return;
-        if (lobbyPads == null || index < 0 || index >= lobbyPads.Length || lobbyPads[index] == null) return;
+        if (nm == null || !nm.IsServer) return;
+        if (lobbyPads == null) return;
 
-        var player = nm.LocalClient.PlayerObject;
-        var pad = lobbyPads[index];
-        Debug.Log("[PAD] placing player on pad " + index + " (" + pad.name + ")");
-
-        // top-center of the pedestal
-        Vector3 pos = pad.position;
-        var rend = pad.GetComponentInChildren<Renderer>();
-        if (rend != null)
-            pos = new Vector3(rend.bounds.center.x, rend.bounds.max.y, rend.bounds.center.z);
-        pos.y += standOffset;
-
-        // face the menu camera (flat, no tilt)
-        Quaternion rot = pad.rotation;
-        if (menuCamera != null)
+        var clients = nm.ConnectedClientsList;
+        for (int i = 0; i < clients.Count && i < lobbyPads.Length; i++)
         {
-            Vector3 dir = menuCamera.transform.position - pos;
-            dir.y = 0f;
-            if (dir.sqrMagnitude > 0.001f) rot = Quaternion.LookRotation(dir);
+            var avatar = clients[i].PlayerObject;
+            var pad = lobbyPads[i];
+            if (avatar == null || pad == null) continue;
+
+            // top-center of the podium
+            Vector3 pos = pad.position;
+            var rend = pad.GetComponentInChildren<Renderer>();
+            if (rend != null)
+                pos = new Vector3(rend.bounds.center.x, rend.bounds.max.y, rend.bounds.center.z);
+            pos.y += standOffset;
+
+            // face the menu camera (flat, no tilt)
+            Quaternion rot = pad.rotation;
+            if (menuCamera != null)
+            {
+                Vector3 dir = menuCamera.transform.position - pos;
+                dir.y = 0f;
+                if (dir.sqrMagnitude > 0.001f) rot = Quaternion.LookRotation(dir);
+            }
+
+            avatar.transform.SetPositionAndRotation(pos, rot);
         }
-
-        // a CharacterController blocks direct teleports, so switch it off for a moment
-        var cc = player.GetComponent<CharacterController>();
-        if (cc != null) cc.enabled = false;
-        player.transform.SetPositionAndRotation(pos, rot);
-        if (cc != null) cc.enabled = true;
-        Debug.Log("[PAD] player is now at " + player.transform.position);
-    }
-
-    void HideLocalPlayerCameras()
-    {
-        var nm = NetworkManager.Singleton;
-        if (nm == null || nm.LocalClient == null || nm.LocalClient.PlayerObject == null) return;
-
-        foreach (var c in nm.LocalClient.PlayerObject.GetComponentsInChildren<Camera>(true)) c.enabled = false;
-        foreach (var l in nm.LocalClient.PlayerObject.GetComponentsInChildren<AudioListener>(true)) l.enabled = false;
     }
 
     // ---------- start game ----------
@@ -411,7 +384,6 @@ public class NetworkLauncher : MonoBehaviour
         var nm = NetworkManager.Singleton;
         if (nm != null && nm.IsHost)
         {
-            // only the host loads the scene; clients follow automatically
             var status = nm.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
             if (status != SceneEventProgressStatus.Started)
                 Debug.LogError("Scene load did not start: " + status + " (is '" + gameSceneName + "' in the Scene List?)");
@@ -467,13 +439,13 @@ public class NetworkLauncher : MonoBehaviour
                 nm.LocalClient != null &&
                 nm.LocalClient.PlayerObject != null)
             {
-                Debug.Log("Network connected and player spawned!");
+                Debug.Log("Network connected and avatar spawned!");
                 return true;
             }
             await Task.Delay(100);
         }
 
-        Debug.LogError("Network or player spawning timed out!");
+        Debug.LogError("Network or avatar spawning timed out!");
         return false;
     }
 
@@ -482,7 +454,6 @@ public class NetworkLauncher : MonoBehaviour
         GameStarted = false;
         localReady = false;
         counting = false;
-        myPad = -1;
 
         try
         {
