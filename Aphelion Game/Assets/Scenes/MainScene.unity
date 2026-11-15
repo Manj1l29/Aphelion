@@ -313,7 +313,7 @@ GameObject:
   - component: {fileID: 388575205}
   m_Layer: 0
   m_Name: SpawnPoint_1
-  m_TagString: Untagged
+  m_TagString: PlayerSpawn
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -531,7 +531,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameplayPlayerSpawner
   gameplayPlayerPrefab: {fileID: 388857822030909744, guid: 1dfc5b8e98cc34f0096d0f591b76376a, type: 3}
-  spawnPointTag: PlayerSpawn
+  spawnPoints:
+  - {fileID: 388575205}
+  - {fileID: 1168609684}
+  - {fileID: 2091591826}
+  - {fileID: 905148656}
 --- !u!4 &581364651
 Transform:
   m_ObjectHideFlags: 0
@@ -747,7 +751,7 @@ GameObject:
   - component: {fileID: 905148656}
   m_Layer: 0
   m_Name: SpawnPoint_4
-  m_TagString: Untagged
+  m_TagString: PlayerSpawn
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -891,7 +895,7 @@ GameObject:
   - component: {fileID: 1168609684}
   m_Layer: 0
   m_Name: SpawnPoint_2
-  m_TagString: Untagged
+  m_TagString: PlayerSpawn
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -4362,7 +4366,7 @@ GameObject:
   - component: {fileID: 2091591826}
   m_Layer: 0
   m_Name: SpawnPoint_3
-  m_TagString: Untagged
+  m_TagString: PlayerSpawn
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
