@@ -88,11 +88,11 @@ public class NetworkLauncher : MonoBehaviour
     }
 
     // ---------- startup ----------
-    async void Start()
+   async void Start()
 {
     if (fadePanel != null)
     {
-        var c = fadePanel.color;
+        Color c = fadePanel.color;
         c.a = 0f;
         fadePanel.color = c;
         fadePanel.raycastTarget = false;
@@ -108,12 +108,8 @@ public class NetworkLauncher : MonoBehaviour
 
     if (nm != null)
     {
+        nm.OnClientDisconnectCallback -= OnClientDisconnected;
         nm.OnClientDisconnectCallback += OnClientDisconnected;
-
-        nm.CustomMessagingManager.RegisterNamedMessageHandler(
-            StartGameMessage,
-            OnStartGameMessage
-        );
     }
 }
     
@@ -285,23 +281,25 @@ public class NetworkLauncher : MonoBehaviour
 
     // ---------- lobby ----------
    void EnterLobby()
-    {
-        Debug.Log("[LOBBY] Entering lobby.");
+{
+    Debug.Log("[LOBBY] Entering lobby.");
 
-        localReady = false;
-        counting = false;
-        GameStarted = false;
+    localReady = false;
+    counting = false;
+    GameStarted = false;
 
-        if (readyButtonText != null)
+    if (readyButtonText != null)
         readyButtonText.text = "Ready";
 
-        Show(MenuState.Lobby, "");
+    RegisterGameStartMessage();
 
-        if (lobbyCodeText != null)
+    Show(MenuState.Lobby, "");
+
+    if (lobbyCodeText != null)
         lobbyCodeText.text = currentCode;
 
-        RefreshLobby();
-    }
+    RefreshLobby();
+}
 
     public async void ToggleReady()
     {
@@ -574,6 +572,26 @@ IEnumerator FadeScreen()
     Color end = fadePanel.color;
     end.a = 1f;
     fadePanel.color = end;
+}
+
+void RegisterGameStartMessage()
+{
+    var nm = NetworkManager.Singleton;
+
+    if (nm == null || nm.CustomMessagingManager == null)
+    {
+        Debug.LogError("Network messaging manager is unavailable!");
+        return;
+    }
+
+    nm.CustomMessagingManager.UnregisterNamedMessageHandler(
+        StartGameMessage
+    );
+
+    nm.CustomMessagingManager.RegisterNamedMessageHandler(
+        StartGameMessage,
+        OnStartGameMessage
+    );
 }
 
     // ---------- leave ----------
