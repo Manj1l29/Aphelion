@@ -1,4 +1,5 @@
 
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
@@ -16,35 +17,42 @@ public class GameplayPlayerSpawner : MonoBehaviour
 
     private void Awake()
     {
-        // Keep this object alive when changing scenes.
+        // This object MUST be a root GameObject.
         DontDestroyOnLoad(gameObject);
     }
 
     private void OnEnable()
     {
-        RegisterSceneCallback();
+        StartCoroutine(WaitForNetwork());
+    }
+
+    private IEnumerator WaitForNetwork()
+    {
+        // Wait until Netcode has started.
+        while (NetworkManager.Singleton == null ||
+               !NetworkManager.Singleton.IsListening)
+        {
+            yield return null;
+        }
+
+        NetworkManager nm = NetworkManager.Singleton;
+
+        if (nm.SceneManager == null)
+        {
+            Debug.LogError("[SPAWNER] Network Scene Management is unavailable!");
+            yield break;
+        }
+
+        nm.SceneManager.OnLoadEventCompleted -= OnSceneLoaded;
+        nm.SceneManager.OnLoadEventCompleted += OnSceneLoaded;
+
+        Debug.Log("[SPAWNER] Listening for scene load completion.");
     }
 
     private void OnDisable()
     {
-        UnregisterSceneCallback();
-    }
+        StopAllCoroutines();
 
-    private void RegisterSceneCallback()
-    {
-        NetworkManager nm = NetworkManager.Singleton;
-
-        if (nm != null && nm.SceneManager != null)
-        {
-            nm.SceneManager.OnLoadEventCompleted -= OnSceneLoaded;
-            nm.SceneManager.OnLoadEventCompleted += OnSceneLoaded;
-
-            Debug.Log("[SPAWNER] Scene callback registered.");
-        }
-    }
-
-    private void UnregisterSceneCallback()
-    {
         NetworkManager nm = NetworkManager.Singleton;
 
         if (nm != null && nm.SceneManager != null)
@@ -64,13 +72,14 @@ public class GameplayPlayerSpawner : MonoBehaviour
 
         NetworkManager nm = NetworkManager.Singleton;
 
+        // Only the host/server spawns players.
         if (nm == null || !nm.IsServer)
             return;
 
         if (hasSpawnedPlayers)
             return;
 
-        Debug.Log("[SPAWNER] MainScene loaded. Preparing players.");
+        Debug.Log("[SPAWNER] MainScene finished loading for clients.");
 
         if (gameplayPlayerPrefab == null)
         {
@@ -78,7 +87,7 @@ public class GameplayPlayerSpawner : MonoBehaviour
             return;
         }
 
-        // Find every spawn point in MainScene.
+        // Find spawn points in MainScene.
         GameObject[] foundPoints;
 
         try
@@ -87,23 +96,23 @@ public class GameplayPlayerSpawner : MonoBehaviour
         }
         catch (UnityException)
         {
-            Debug.LogError("[SPAWNER] Tag '" + spawnPointTag + "' does not exist!");
+            Debug.LogError("[SPAWNER] PlayerSpawn tag does not exist!");
             return;
         }
 
-        if (foundPoints.Length == 0)
-        {
-            Debug.LogError("[SPAWNER] No spawn points found!");
-            return;
-        }
-
-        // Sort points by name so PlayerSpawn1, PlayerSpawn2, etc. stay consistent.
         System.Array.Sort(foundPoints, (a, b) =>
             string.Compare(a.name, b.name, System.StringComparison.Ordinal));
 
         if (foundPoints.Length < nm.ConnectedClientsList.Count)
         {
-            Debug.LogError("[SPAWNER] Not enough spawn points for all players!");
+            Debug.LogError("[SPAWNER] Not enough spawn points!");
+            return;
+        }
+
+        // Make sure every point is available before replacing lobby players.
+        if (foundPoints.Length == 0)
+        {
+            Debug.LogError("[SPAWNER] No spawn points found!");
             return;
         }
 
@@ -116,7 +125,7 @@ public class GameplayPlayerSpawner : MonoBehaviour
             }
         }
 
-        // Spawn the gameplay player for each connected client.
+        // Spawn the actual gameplay players.
         int index = 0;
 
         foreach (var client in nm.ConnectedClientsList)
@@ -132,14 +141,15 @@ public class GameplayPlayerSpawner : MonoBehaviour
             player.SpawnAsPlayerObject(client.ClientId, true);
 
             Debug.Log(
-                "[SPAWNER] Spawned client " + client.ClientId +
-                " at " + spawn.name
+                "[SPAWNER] Client " + client.ClientId +
+                " spawned at " + foundPoints[index].name
             );
 
             index++;
         }
 
         hasSpawnedPlayers = true;
+
         Debug.Log("[SPAWNER] All gameplay players spawned!");
     }
 }
