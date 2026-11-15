@@ -4,25 +4,24 @@ using UnityEngine;
 
 public class GameplaySceneFade : MonoBehaviour
 {
-    [Header("Fade Settings")]
-    public CanvasGroup fadePanel;
-    public float fadeDuration = 1.5f;
+    [SerializeField] private CanvasGroup fadePanel;
+    [SerializeField] private float fadeDuration = 1.5f;
 
     private IEnumerator Start()
     {
         if (fadePanel == null)
         {
-            Debug.LogError("[FADE IN] Fade Panel is not assigned!");
+            Debug.LogError("[FADE IN] CanvasGroup is not assigned!");
             yield break;
         }
 
-        // Start completely black.
+        // Begin fully black.
         fadePanel.gameObject.SetActive(true);
         fadePanel.alpha = 1f;
         fadePanel.interactable = false;
         fadePanel.blocksRaycasts = true;
 
-        Debug.Log("[FADE IN] Starting gameplay fade.");
+        Debug.Log("[FADE IN] Starting.");
 
         float elapsed = 0f;
 
@@ -39,11 +38,10 @@ public class GameplaySceneFade : MonoBehaviour
             yield return null;
         }
 
-        // Fully reveal the game.
         fadePanel.alpha = 0f;
         fadePanel.blocksRaycasts = false;
         fadePanel.gameObject.SetActive(false);
 
-        Debug.Log("[FADE IN] Gameplay visible.");
+        Debug.Log("[FADE IN] Complete.");
     }
 }
