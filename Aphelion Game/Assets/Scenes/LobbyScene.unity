@@ -1612,7 +1612,6 @@ MonoBehaviour:
   - {fileID: 504009630}
   - {fileID: 481709388}
   lobbyStatusText: {fileID: 380048399}
-  countdownText: {fileID: 0}
   readyButton: {fileID: 1785572775}
   readyButtonText: {fileID: 1145364062}
   minPlayersToStart: 2

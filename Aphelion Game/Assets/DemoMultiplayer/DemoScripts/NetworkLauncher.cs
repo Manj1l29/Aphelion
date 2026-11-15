@@ -476,12 +476,16 @@ void OnStartGameMessage(
 {
     var nm = NetworkManager.Singleton;
 
-    if (nm == null ||
-        senderClientId != NetworkManager.ServerClientId)
+    if (nm == null)
+        return;
+
+    if (senderClientId != NetworkManager.ServerClientId)
         return;
 
     if (state == MenuState.Loading)
         return;
+
+    Debug.Log("[LAUNCH] Client received launch message!");
 
     counting = false;
     GameStarted = true;
@@ -493,23 +497,27 @@ void OnStartGameMessage(
     StartCoroutine(FadeScreen());
 }
 
-    void FinishCountdown()
+   void FinishCountdown()
 {
-    counting = false;
+    if (state == MenuState.Loading)
+        return;
 
     var nm = NetworkManager.Singleton;
 
-    // Only host launches the game.
     if (nm == null || !nm.IsHost)
         return;
 
+    Debug.Log("[LAUNCH] Countdown reached zero. Host launching.");
+
+    counting = false;
     GameStarted = true;
     state = MenuState.Loading;
 
     if (lobbyStatusText != null)
         lobbyStatusText.text = "LAUNCHING...";
 
-    // Tell every connected player to fade.
+    Debug.Log("[LAUNCH] Sending launch message to clients.");
+
     using (var writer = new FastBufferWriter(1, Allocator.Temp))
     {
         nm.CustomMessagingManager.SendNamedMessageToAll(
@@ -519,37 +527,60 @@ void OnStartGameMessage(
         );
     }
 
-    // Host fades and loads MainScene.
     StartCoroutine(FadeAndLoad());
 }
 
 IEnumerator FadeAndLoad()
 {
-    // Fade the host's screen to black.
+    Debug.Log("[LAUNCH] Host starting fade.");
+
     yield return StartCoroutine(FadeScreen());
+
+    // Small delay to let the transition finish rendering.
+    yield return new WaitForSecondsRealtime(0.2f);
 
     var nm = NetworkManager.Singleton;
 
-    // Host loads the scene; clients follow through Netcode.
-    if (nm != null && nm.IsHost)
+    if (nm == null)
     {
-        var status = nm.SceneManager.LoadScene(
-            "MainScene",
-            LoadSceneMode.Single
-        );
+        Debug.LogError("[SCENE] NetworkManager is NULL!");
+        yield break;
+    }
 
-        if (status != SceneEventProgressStatus.Started)
-        {
-            Debug.LogError("Scene load failed: " + status);
-        }
+    if (!nm.IsHost)
+    {
+        Debug.LogError("[SCENE] This client is not the host!");
+        yield break;
+    }
+
+    if (nm.SceneManager == null)
+    {
+        Debug.LogError("[SCENE] Netcode SceneManager is NULL! Check Enable Scene Management.");
+        yield break;
+    }
+
+    Debug.Log("[SCENE] Loading: " + gameSceneName);
+
+    var status = nm.SceneManager.LoadScene(
+        gameSceneName,
+        LoadSceneMode.Single
+    );
+
+    Debug.Log("[SCENE] Load result: " + status);
+
+    if (status != SceneEventProgressStatus.Started)
+    {
+        Debug.LogError("[SCENE] Scene failed to start loading: " + status);
     }
 }
 
 IEnumerator FadeScreen()
 {
+    Debug.Log("[FADE] Starting screen fade.");
+
     if (fadePanel == null)
     {
-        Debug.LogError("Fade Panel is not assigned!");
+        Debug.LogError("[FADE] Fade Panel is NOT assigned!");
         yield break;
     }
 
@@ -560,7 +591,7 @@ IEnumerator FadeScreen()
 
     while (t < fadeDuration)
     {
-        t += Time.deltaTime;
+        t += Time.unscaledDeltaTime;
 
         Color c = fadePanel.color;
         c.a = Mathf.Clamp01(t / fadeDuration);
@@ -572,6 +603,8 @@ IEnumerator FadeScreen()
     Color end = fadePanel.color;
     end.a = 1f;
     fadePanel.color = end;
+
+    Debug.Log("[FADE] Screen completely black.");
 }
 
 void RegisterGameStartMessage()
