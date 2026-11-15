@@ -7,26 +7,45 @@ using UnityEngine.SceneManagement;
 public class GameplayPlayerSpawner : MonoBehaviour
 {
     [Header("Gameplay Player")]
-    public NetworkObject gameplayPlayerPrefab;
+    [SerializeField] private NetworkObject gameplayPlayerPrefab;
 
-    [Header("Spawn Points")]
-    public Transform[] spawnPoints = new Transform[4];
+    [Header("Spawn Point Tag")]
+    [SerializeField] private string spawnPointTag = "PlayerSpawn";
 
     private bool hasSpawnedPlayers;
 
+    private void Awake()
+    {
+        // Keep this object alive when changing scenes.
+        DontDestroyOnLoad(gameObject);
+    }
+
     private void OnEnable()
     {
-        var nm = NetworkManager.Singleton;
-
-        if (nm != null && nm.SceneManager != null)
-        {
-            nm.SceneManager.OnLoadEventCompleted += OnSceneLoaded;
-        }
+        RegisterSceneCallback();
     }
 
     private void OnDisable()
     {
-        var nm = NetworkManager.Singleton;
+        UnregisterSceneCallback();
+    }
+
+    private void RegisterSceneCallback()
+    {
+        NetworkManager nm = NetworkManager.Singleton;
+
+        if (nm != null && nm.SceneManager != null)
+        {
+            nm.SceneManager.OnLoadEventCompleted -= OnSceneLoaded;
+            nm.SceneManager.OnLoadEventCompleted += OnSceneLoaded;
+
+            Debug.Log("[SPAWNER] Scene callback registered.");
+        }
+    }
+
+    private void UnregisterSceneCallback()
+    {
+        NetworkManager nm = NetworkManager.Singleton;
 
         if (nm != null && nm.SceneManager != null)
         {
@@ -43,7 +62,7 @@ public class GameplayPlayerSpawner : MonoBehaviour
         if (sceneName != "MainScene")
             return;
 
-        var nm = NetworkManager.Singleton;
+        NetworkManager nm = NetworkManager.Singleton;
 
         if (nm == null || !nm.IsServer)
             return;
@@ -51,17 +70,44 @@ public class GameplayPlayerSpawner : MonoBehaviour
         if (hasSpawnedPlayers)
             return;
 
-        hasSpawnedPlayers = true;
+        Debug.Log("[SPAWNER] MainScene loaded. Preparing players.");
 
         if (gameplayPlayerPrefab == null)
         {
-            Debug.LogError("[SPAWNER] Player prefab is not assigned!");
+            Debug.LogError("[SPAWNER] Gameplay Player Prefab is missing!");
             return;
         }
 
-        Debug.Log("[SPAWNER] MainScene loaded. Spawning gameplay players.");
+        // Find every spawn point in MainScene.
+        GameObject[] foundPoints;
 
-        // Remove the old lobby player objects.
+        try
+        {
+            foundPoints = GameObject.FindGameObjectsWithTag(spawnPointTag);
+        }
+        catch (UnityException)
+        {
+            Debug.LogError("[SPAWNER] Tag '" + spawnPointTag + "' does not exist!");
+            return;
+        }
+
+        if (foundPoints.Length == 0)
+        {
+            Debug.LogError("[SPAWNER] No spawn points found!");
+            return;
+        }
+
+        // Sort points by name so PlayerSpawn1, PlayerSpawn2, etc. stay consistent.
+        System.Array.Sort(foundPoints, (a, b) =>
+            string.Compare(a.name, b.name, System.StringComparison.Ordinal));
+
+        if (foundPoints.Length < nm.ConnectedClientsList.Count)
+        {
+            Debug.LogError("[SPAWNER] Not enough spawn points for all players!");
+            return;
+        }
+
+        // Remove lobby player objects.
         foreach (var client in nm.ConnectedClientsList)
         {
             if (client.PlayerObject != null)
@@ -70,19 +116,12 @@ public class GameplayPlayerSpawner : MonoBehaviour
             }
         }
 
-        // Spawn a playable player for each connected client.
+        // Spawn the gameplay player for each connected client.
         int index = 0;
 
         foreach (var client in nm.ConnectedClientsList)
         {
-            if (index >= spawnPoints.Length || spawnPoints[index] == null)
-            {
-                Debug.LogError("[SPAWNER] Missing spawn point " + index);
-                index++;
-                continue;
-            }
-
-            Transform spawn = spawnPoints[index];
+            Transform spawn = foundPoints[index].transform;
 
             NetworkObject player = Instantiate(
                 gameplayPlayerPrefab,
@@ -93,11 +132,14 @@ public class GameplayPlayerSpawner : MonoBehaviour
             player.SpawnAsPlayerObject(client.ClientId, true);
 
             Debug.Log(
-                "[SPAWNER] Spawned player for client " +
-                client.ClientId
+                "[SPAWNER] Spawned client " + client.ClientId +
+                " at " + spawn.name
             );
 
             index++;
         }
+
+        hasSpawnedPlayers = true;
+        Debug.Log("[SPAWNER] All gameplay players spawned!");
     }
 }

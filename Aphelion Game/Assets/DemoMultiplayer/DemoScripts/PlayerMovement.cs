@@ -71,8 +71,6 @@ public class PlayerMovement : NetworkBehaviour
         Vector3 flatVelocity = rb.linearVelocity;
         flatVelocity.y = 0f;
 
-        Debug.Log("Speed sent: " + flatVelocity.magnitude);
-
         animator.SetFloat("Speed", flatVelocity.magnitude);
         animator.SetBool("IsGrounded", IsGrounded());
     }
