@@ -1,97 +1,189 @@
-
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.EventSystems;
 using Unity.Netcode;
 
-[RequireComponent(typeof(CharacterController))]
+[RequireComponent(typeof(Rigidbody))]
 public class PlayerMovement : NetworkBehaviour
 {
-    public Transform cameraTransform;
+    public Transform cam;
+    public float moveSpeed = 6f;
+    public float runSpeed = 9f;
+    public float jumpForce = 5f;
+    public float mouseSensitivity = 0.1f;
+    public float cameraDistance = 5f;
+    public float cameraHeight = 1.6f;
+    public float zoomSpeed = 1f;
+    public float minDistance = 2f;
+    public float maxDistance = 10f;
+    public float turnSpeed = 7f;
 
-    public float walkSpeed = 4f;
-    public float lookSensitivity = 0.1f;
-    public float gravity = -20f;
+    public Animator animator;
 
-    CharacterController controller;
-    float pitch;
-    float verticalVelocity;
+    private float yaw;
+    private float pitch;
+    private Rigidbody rb;
+    private Collider col;
 
-    void Awake()
+    private void Awake()
     {
-        controller = GetComponent<CharacterController>();
+        rb = GetComponent<Rigidbody>();
+        col = GetComponent<Collider>();
+        rb.freezeRotation = true;
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        if (!IsOwner)
+        {
+            cam.gameObject.SetActive(false);
+            enabled = false;
+            return;
+        }
+
+        SetCursorLocked(true);
     }
 
     void Update()
     {
-        if (!IsSpawned || !IsOwner) return;
-
-        if (Keyboard.current == null || Mouse.current == null) return;
-
-        if (Keyboard.current.escapeKey.wasPressedThisFrame)
-            SetCursorLocked(false);
-
-        if (Mouse.current.leftButton.wasPressedThisFrame
-            && Cursor.lockState != CursorLockMode.Locked
-            && !(EventSystem.current != null &&
-                 EventSystem.current.IsPointerOverGameObject()))
-        {
-            SetCursorLocked(true);
-        }
-
+        UpdateAnimations();
+        
+        HandleCursor();
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
         Look();
-        Move();
+        Zoom();
+        Jump();
     }
 
-    void Look()
+    private void FixedUpdate()
     {
-        Vector2 delta = Mouse.current.delta.ReadValue();
-
-        transform.Rotate(0f, delta.x * lookSensitivity, 0f);
-
-        pitch -= delta.y * lookSensitivity;
-        pitch = Mathf.Clamp(pitch, -85f, 85f);
-
-        cameraTransform.localRotation =
-            Quaternion.Euler(pitch, 0f, 0f);
+        Movement();
     }
 
-    void Move()
+    private void LateUpdate()
     {
-        var kb = Keyboard.current;
+        PositionCamera();
+    }
 
-        float x = 0f;
-        float z = 0f;
+    void UpdateAnimations()
+    {
+        Vector3 flatVelocity = rb.linearVelocity;
+        flatVelocity.y = 0f;
 
-        if (kb.dKey.isPressed) x += 1f;
-        if (kb.aKey.isPressed) x -= 1f;
-        if (kb.wKey.isPressed) z += 1f;
-        if (kb.sKey.isPressed) z -= 1f;
+        Debug.Log("Speed sent: " + flatVelocity.magnitude);
 
-        Vector3 move = transform.right * x + transform.forward * z;
+        animator.SetFloat("Speed", flatVelocity.magnitude);
+        animator.SetBool("IsGrounded", IsGrounded());
+    }
 
-        if (move.sqrMagnitude > 1f)
-            move.Normalize();
 
-        if (controller.isGrounded && verticalVelocity < 0f)
-            verticalVelocity = -2f;
 
-        verticalVelocity += gravity * Time.deltaTime;
+    void HandleCursor()
+    {
+        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+            SetCursorLocked(false);
 
-        Vector3 velocity =
-            move * walkSpeed + Vector3.up * verticalVelocity;
+        bool clickedOnUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
 
-        controller.Move(velocity * Time.deltaTime);
+        if (Mouse.current.leftButton.wasPressedThisFrame && !clickedOnUI)
+            SetCursorLocked(true);
     }
 
     public void SetCursorLocked(bool locked)
     {
-        Cursor.lockState = locked
-            ? CursorLockMode.Locked
-            : CursorLockMode.None;
-
+        Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
         Cursor.visible = !locked;
+    }
+
+    void Zoom()
+    {
+        float scroll = Mouse.current.scroll.ReadValue().y;
+
+        if (scroll != 0f)
+        {
+            cameraDistance -= Mathf.Sign(scroll) * zoomSpeed;
+            cameraDistance = Mathf.Clamp(cameraDistance, minDistance, maxDistance);
+        }
+    }
+
+    void Look()
+    {
+        Vector2 mouseDelta = Mouse.current.delta.ReadValue();
+
+        yaw += mouseDelta.x * mouseSensitivity;
+        pitch -= mouseDelta.y * mouseSensitivity;
+        pitch = Mathf.Clamp(pitch, -40f, 70f);
+    }
+
+    Vector3 GetMoveInput()
+    {
+        var kb = Keyboard.current;
+        float x = 0f, z = 0f;
+
+        if (kb.wKey.isPressed) z += 1f;
+        if (kb.aKey.isPressed) x -= 1f;
+        if (kb.sKey.isPressed) z -= 1f;
+        if (kb.dKey.isPressed) x += 1f;
+
+        if (kb.shiftKey.isPressed)
+        {
+            animator.SetTrigger("Shift");
+            moveSpeed = runSpeed;
+        }
+
+        return new Vector3(x, 0f, z).normalized;
+    }
+
+    void Jump()
+    {
+        if (Keyboard.current.spaceKey.wasPressedThisFrame && IsGrounded())
+        {
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            animator.SetTrigger("Jump");
+        }
+    }
+
+    bool IsGrounded()
+    {
+        Vector3 origin = col.bounds.center;
+        float distance = col.bounds.extents.y + 0.1f;
+        return Physics.Raycast(origin, Vector3.down, distance);
+    }
+
+    void PositionCamera()
+    {
+        Quaternion camRotation = Quaternion.Euler(pitch, yaw, 0f);
+        Vector3 focusPoint = transform.position + Vector3.up * cameraHeight;
+
+        cam.position = focusPoint - camRotation * Vector3.forward * cameraDistance;
+        cam.rotation = camRotation;
+    }
+
+    void Movement()
+    {
+        Vector3 input = Cursor.lockState == CursorLockMode.Locked ? GetMoveInput() : Vector3.zero;
+        Quaternion camYaw = Quaternion.Euler(0f, yaw, 0f);
+        Vector3 moveDirection = camYaw * input;
+
+        float currentSpeed;
+        if (Keyboard.current.leftShiftKey.isPressed)
+        {
+            currentSpeed = runSpeed;
+        }
+        else
+        {
+            currentSpeed = moveSpeed;
+        }
+
+        Vector3 velocity = moveDirection * currentSpeed;
+        velocity.y = rb.linearVelocity.y;
+        rb.linearVelocity = velocity;
+
+        if (moveDirection != Vector3.zero)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+            rb.MoveRotation(Quaternion.Slerp(rb.rotation, targetRotation, turnSpeed * Time.fixedDeltaTime));
+        }
     }
 }
