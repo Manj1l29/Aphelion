@@ -670,6 +670,67 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 122940505}
   m_CullTransparentMesh: 1
+--- !u!1 &132728318
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 132728319}
+  - component: {fileID: 132728320}
+  m_Layer: 0
+  m_Name: TerminalInteractManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &132728319
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 132728318}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 608822205}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &132728320
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 132728318}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 910039d1af7239b40957463feb704952, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TerminalInteractionController
+  interactionDistance: 5
+  interactionLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  interactionPrompt: {fileID: 1629478484}
+  interactionText: {fileID: 122940507}
+  holdSlider: {fileID: 48223280}
+  terminalPanel: {fileID: 1206010676}
+  exitButton: {fileID: 1926030635}
+  hudElementsToHide:
+  - {fileID: 1381722177}
+  - {fileID: 2079118139}
+  - {fileID: 842298913}
+  - {fileID: 1166274460}
+  - {fileID: 867445699}
+  crosshair: {fileID: 867445699}
+  playerMovement: {fileID: 0}
 --- !u!1 &157682257
 GameObject:
   m_ObjectHideFlags: 0
@@ -2120,7 +2181,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
-  m_AnchoredPosition: {x: 100, y: 431}
+  m_AnchoredPosition: {x: 100, y: 279.2}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &457856624
@@ -2925,6 +2986,7 @@ Transform:
   - {fileID: 1379604485}
   - {fileID: 1713484196}
   - {fileID: 171847123}
+  - {fileID: 132728319}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &664196728
@@ -4903,7 +4965,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
-  m_AnchoredPosition: {x: 100, y: 462}
+  m_AnchoredPosition: {x: 100, y: 310.2}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &787292965
@@ -8317,7 +8379,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
-  m_AnchoredPosition: {x: 69, y: 302}
+  m_AnchoredPosition: {x: 69, y: 136.9}
   m_SizeDelta: {x: 836, y: 338}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1381722179
@@ -11912,7 +11974,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 81.6156, y: 628.30255}
+  m_AnchoredPosition: {x: 81.6156, y: 593.5}
   m_SizeDelta: {x: 115.15796, y: 61.789497}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &1713484193
@@ -15753,7 +15815,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1978929029}
+      - m_Target: {fileID: 132728320}
         m_TargetAssemblyTypeName: TerminalInteractionController, Assembly-CSharp
         m_MethodName: CloseTerminal
         m_Mode: 1
@@ -15949,7 +16011,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1978929028}
-  - component: {fileID: 1978929029}
   m_Layer: 0
   m_Name: InteractionControllers
   m_TagString: Untagged
@@ -15977,35 +16038,6 @@ RectTransform:
   m_AnchoredPosition: {x: 0.000061035156, y: -49.99997}
   m_SizeDelta: {x: 250, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!114 &1978929029
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1978929027}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 910039d1af7239b40957463feb704952, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TerminalInteractionController
-  interactionDistance: 3
-  interactionLayers:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  interactionPrompt: {fileID: 1629478484}
-  interactionText: {fileID: 122940507}
-  holdSlider: {fileID: 48223280}
-  terminalPanel: {fileID: 1206010676}
-  exitButton: {fileID: 1926030635}
-  hudElementsToHide:
-  - {fileID: 842298913}
-  - {fileID: 1166274460}
-  - {fileID: 867445699}
-  - {fileID: 2079118139}
-  - {fileID: 1381722177}
-  crosshair: {fileID: 867445699}
-  playerMovement: {fileID: 0}
 --- !u!1 &2008397582
 GameObject:
   m_ObjectHideFlags: 0
@@ -18470,7 +18502,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
-  m_AnchoredPosition: {x: 72, y: 493}
+  m_AnchoredPosition: {x: 72, y: 341.2}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2098136239

@@ -56,8 +56,8 @@ public class DayOneMissionUI : MonoBehaviour
     {
         ResolveReferences();
 
-        SetPanel(currentObjectivePanel, true);
-        SetPanel(progressPanel, true);
+        // Only configure initial visibility here.
+        // Do not force these panels on during Update.
         SetPanel(returnPromptPanel, false);
         SetPanel(countdownPanel, false);
     }
@@ -150,9 +150,6 @@ public class DayOneMissionUI : MonoBehaviour
         int currentIndex =
             missionManager.CurrentObjectiveIndex.Value;
 
-        SetPanel(currentObjectivePanel, true);
-        SetPanel(progressPanel, true);
-
         if (currentIndex < objectiveNames.Length)
         {
             if (currentObjectiveTitleText != null)
@@ -178,7 +175,7 @@ public class DayOneMissionUI : MonoBehaviour
         if (progressHeaderText != null)
         {
             progressHeaderText.text =
-                "MISSION PROGRESS  |  " +
+                "MISSION PROGRESS | " +
                 missionManager.CompletedCount + "/4";
         }
 
@@ -222,9 +219,7 @@ public class DayOneMissionUI : MonoBehaviour
             else
                 marker = "[ ]";
 
-            builder.AppendLine(
-                marker + " " + objectiveNames[i]
-            );
+            builder.AppendLine(marker + " " + objectiveNames[i]);
         }
 
         return builder.ToString();
@@ -232,11 +227,6 @@ public class DayOneMissionUI : MonoBehaviour
 
     private void UpdateLaterDay(int currentDay)
     {
-        SetPanel(currentObjectivePanel, true);
-        SetPanel(progressPanel, true);
-        SetPanel(returnPromptPanel, false);
-        SetPanel(countdownPanel, false);
-
         if (currentObjectiveTitleText != null)
             currentObjectiveTitleText.text = "SURVIVAL OPERATIONS";
 
@@ -248,7 +238,7 @@ public class DayOneMissionUI : MonoBehaviour
         }
 
         if (progressHeaderText != null)
-            progressHeaderText.text = "DAY 1 COMPLETE  |  4/4";
+            progressHeaderText.text = "DAY 1 COMPLETE | 4/4";
 
         if (progressText != null)
         {
@@ -258,5 +248,8 @@ public class DayOneMissionUI : MonoBehaviour
                 "[X] POWER HOUSE\n" +
                 "[X] HABITAT";
         }
+
+        SetPanel(returnPromptPanel, false);
+        SetPanel(countdownPanel, false);
     }
 }
