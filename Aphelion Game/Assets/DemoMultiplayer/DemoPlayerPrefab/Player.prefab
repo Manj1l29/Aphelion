@@ -116,7 +116,7 @@ MonoBehaviour:
     m_Bits: 1
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 0
+  m_RenderPostProcessing: 1
   m_Antialiasing: 0
   m_AntialiasingQuality: 2
   m_StopNaN: 0
@@ -218,6 +218,7 @@ GameObject:
   - component: {fileID: 7356816246658817775}
   - component: {fileID: 2415942513150459214}
   - component: {fileID: 4534152387685643449}
+  - component: {fileID: 7711375079041242706}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -377,7 +378,6 @@ MonoBehaviour:
   moveSpeed: 6
   runSpeed: 9
   jumpForce: 5
-  turnSpeed: 7
   animator: {fileID: 7894825319178293645}
 --- !u!114 &2415942513150459214
 MonoBehaviour:
@@ -452,6 +452,20 @@ MonoBehaviour:
   UseRigidBodyForMotion: 0
   AutoUpdateKinematicState: 1
   AutoSetKinematicOnDespawn: 1
+--- !u!114 &7711375079041242706
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 988586245408222247}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b470de3e5126ea546a2f114bdfa5c8c2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HideLocalPlayerBody
+  ShowTopMostFoldoutHeaderGroup: 1
+  bodyRoot: {fileID: 2079923488610171439}
 --- !u!1 &1542977784443846882
 GameObject:
   m_ObjectHideFlags: 0
