@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
 using Unity.Netcode;
+using Unity.Netcode.Components;
 
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerMovement : NetworkBehaviour
@@ -21,23 +22,36 @@ public class PlayerMovement : NetworkBehaviour
     [Header("Animation")]
     public Animator animator;
 
+    private static readonly int SpeedHash =
+        Animator.StringToHash("Speed");
+
+    private static readonly int GroundedHash =
+        Animator.StringToHash("IsGrounded");
+
+    private static readonly int JumpHash =
+        Animator.StringToHash("Jump");
+
     private float yaw;
     private float pitch;
 
     private Rigidbody rb;
     private Collider col;
+    private NetworkAnimator networkAnimator;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
         col = GetComponent<Collider>();
 
-        // Allow horizontal rotation, freeze unwanted tilting.
+        networkAnimator = GetComponent<NetworkAnimator>();
+
+        if (animator == null)
+            animator = GetComponentInChildren<Animator>();
+
         rb.constraints =
             RigidbodyConstraints.FreezeRotationX |
             RigidbodyConstraints.FreezeRotationZ;
 
-        // Disable Rigidbody interpolation for unsmoothed rotation.
         rb.interpolation = RigidbodyInterpolation.None;
     }
 
@@ -54,9 +68,19 @@ public class PlayerMovement : NetworkBehaviour
 
         if (cam == null)
         {
-            Debug.LogError("[PLAYER] First-person camera is not assigned!");
+            Debug.LogError("[PLAYER] Camera is not assigned!");
             enabled = false;
             return;
+        }
+
+        if (animator == null)
+        {
+            Debug.LogError("[PLAYER] Animator is missing!");
+        }
+
+        if (networkAnimator == null)
+        {
+            Debug.LogError("[PLAYER] NetworkAnimator is missing!");
         }
 
         yaw = transform.eulerAngles.y;
@@ -71,14 +95,12 @@ public class PlayerMovement : NetworkBehaviour
 
         HandleCursor();
 
-        if (Cursor.lockState != CursorLockMode.Locked)
+        if (Cursor.lockState == CursorLockMode.Locked)
         {
-            UpdateAnimations();
-            return;
+            Look();
+            Jump();
         }
 
-        Look();
-        Jump();
         UpdateAnimations();
     }
 
@@ -95,7 +117,6 @@ public class PlayerMovement : NetworkBehaviour
         if (!IsOwner || cam == null)
             return;
 
-        // Apply camera rotation directly with no smoothing.
         cam.rotation = Quaternion.Euler(pitch, yaw, 0f);
     }
 
@@ -181,7 +202,7 @@ public class PlayerMovement : NetworkBehaviour
 
         rb.linearVelocity = velocity;
 
-        // Rotate directly. No Slerp or turn-speed interpolation.
+        // Instant rotation. No smoothing.
         rb.MoveRotation(Quaternion.Euler(0f, yaw, 0f));
     }
 
@@ -194,8 +215,15 @@ public class PlayerMovement : NetworkBehaviour
         {
             rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
 
-            if (animator != null)
-                animator.SetTrigger("Jump");
+            if (networkAnimator != null)
+            {
+                // Networked trigger, not Animator.SetTrigger.
+                networkAnimator.SetTrigger(JumpHash);
+            }
+            else if (animator != null)
+            {
+                animator.SetTrigger(JumpHash);
+            }
         }
     }
 
@@ -222,7 +250,7 @@ public class PlayerMovement : NetworkBehaviour
         Vector3 flatVelocity = rb.linearVelocity;
         flatVelocity.y = 0f;
 
-        animator.SetFloat("Speed", flatVelocity.magnitude);
-        animator.SetBool("IsGrounded", IsGrounded());
+        animator.SetFloat(SpeedHash, flatVelocity.magnitude);
+        animator.SetBool(GroundedHash, IsGrounded());
     }
 }

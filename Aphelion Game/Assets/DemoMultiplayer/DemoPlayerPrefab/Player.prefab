@@ -219,6 +219,7 @@ GameObject:
   - component: {fileID: 2415942513150459214}
   - component: {fileID: 4534152387685643449}
   - component: {fileID: 7711375079041242706}
+  - component: {fileID: 3241493284719368541}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -277,7 +278,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 3988522783
+  GlobalObjectIdHash: 2347899461
   InScenePlacedSourceGlobalObjectIdHash: 2700417066
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -466,6 +467,42 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HideLocalPlayerBody
   ShowTopMostFoldoutHeaderGroup: 1
   bodyRoot: {fileID: 2079923488610171439}
+--- !u!114 &3241493284719368541
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 988586245408222247}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8d0727d5ae3244e3b569694d3912374, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.Components.NetworkAnimator
+  ShowTopMostFoldoutHeaderGroup: 1
+  NetworkAnimatorExpanded: 0
+  AuthorityMode: 1
+  m_Animator: {fileID: 7894825319178293645}
+  TransitionStateInfoList: []
+  AnimatorParameterEntries:
+    ParameterEntries:
+    - name: Speed
+      NameHash: -823668238
+      Synchronize: 1
+      ParameterType: 1
+    - name: IsGrounded
+      NameHash: 507951781
+      Synchronize: 1
+      ParameterType: 4
+    - name: Jump
+      NameHash: 125937960
+      Synchronize: 1
+      ParameterType: 9
+    - name: Shift
+      NameHash: 1690965057
+      Synchronize: 1
+      ParameterType: 9
+  AnimatorParametersExpanded: 0
 --- !u!1 &1542977784443846882
 GameObject:
   m_ObjectHideFlags: 0
