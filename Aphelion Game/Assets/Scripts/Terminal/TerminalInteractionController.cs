@@ -27,9 +27,7 @@ public class TerminalInteractionController : MonoBehaviour
     [Header("Crosshair")]
     [SerializeField] private GameObject crosshair;
 
-    [Header("Player")]
-    [SerializeField] private PlayerMovement playerMovement;
-
+    private PlayerMovement playerMovement;
     private Transform playerCamera;
     private NetworkObject localPlayerNetworkObject;
     private TerminalInteractable currentTerminal;
@@ -37,17 +35,21 @@ public class TerminalInteractionController : MonoBehaviour
     private float holdTimer;
     private bool terminalOpen;
 
+    // Saves the original active state of every HUD element.
     private bool[] previousHudStates;
+    private bool[] managedHudEntries;
+
     private bool previousCrosshairState;
-    private bool previousPromptState;
+    private bool hudStatesSaved;
 
     private void Awake()
     {
-        // Set up the prompt.
         if (interactionPrompt != null)
             interactionPrompt.SetActive(false);
 
-        // Set up the slider.
+        if (terminalPanel != null)
+            terminalPanel.SetActive(false);
+
         if (holdSlider != null)
         {
             holdSlider.minValue = 0f;
@@ -58,7 +60,13 @@ public class TerminalInteractionController : MonoBehaviour
         if (interactionText != null)
             interactionText.text = "HOLD E TO ACTION";
 
-        // Automatically find ExitButton if not assigned.
+        ConnectExitButton();
+
+        Debug.Log("[TERMINAL] Controller initialized.");
+    }
+
+    private void ConnectExitButton()
+    {
         if (exitButton == null && terminalPanel != null)
         {
             Button[] buttons =
@@ -66,7 +74,11 @@ public class TerminalInteractionController : MonoBehaviour
 
             foreach (Button button in buttons)
             {
-                if (button.gameObject.name.Contains("Exit"))
+                string buttonName =
+                    button.gameObject.name.ToLowerInvariant();
+
+                if (buttonName.Contains("exit") ||
+                    buttonName.Contains("close"))
                 {
                     exitButton = button;
                     break;
@@ -74,7 +86,6 @@ public class TerminalInteractionController : MonoBehaviour
             }
         }
 
-        // Connect the exit button automatically.
         if (exitButton != null)
         {
             exitButton.onClick.RemoveListener(CloseTerminal);
@@ -84,28 +95,24 @@ public class TerminalInteractionController : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("[TERMINAL] Exit button not found!");
+            Debug.LogWarning(
+                "[TERMINAL] Exit button not assigned or found."
+            );
         }
-
-        // Terminal starts closed.
-        if (terminalPanel != null)
-            terminalPanel.SetActive(false);
-
-        Debug.Log("[TERMINAL] Controller initialized.");
     }
 
     private void Update()
     {
         FindLocalPlayer();
 
-        if (playerMovement == null || playerCamera == null)
-            return;
-
         if (terminalOpen)
         {
             HandleTerminalUI();
             return;
         }
+
+        if (playerMovement == null || playerCamera == null)
+            return;
 
         if (Cursor.lockState != CursorLockMode.Locked)
         {
@@ -114,7 +121,7 @@ public class TerminalInteractionController : MonoBehaviour
         }
 
         DetectTerminal();
-        HandleInteractionInput();
+        HandleInteraction();
     }
 
     private void FindLocalPlayer()
@@ -215,7 +222,7 @@ public class TerminalInteractionController : MonoBehaviour
             interactionText.text = "HOLD E TO ACTION";
     }
 
-    private void HandleInteractionInput()
+    private void HandleInteraction()
     {
         if (currentTerminal == null ||
             Keyboard.current == null)
@@ -228,11 +235,11 @@ public class TerminalInteractionController : MonoBehaviour
             float duration =
                 Mathf.Max(0.01f, currentTerminal.holdDuration);
 
-            float progress =
-                Mathf.Clamp01(holdTimer / duration);
-
             if (holdSlider != null)
-                holdSlider.value = progress;
+            {
+                holdSlider.value =
+                    Mathf.Clamp01(holdTimer / duration);
+            }
 
             if (holdTimer >= duration)
                 OpenTerminal();
@@ -263,21 +270,30 @@ public class TerminalInteractionController : MonoBehaviour
 
     private void OpenTerminal()
     {
-        if (terminalPanel == null)
+        if (terminalPanel == null || terminalOpen)
+            return;
+
+        FindLocalPlayer();
+
+        if (playerMovement == null)
         {
-            Debug.LogError("[TERMINAL] Terminal Panel is missing!");
+            Debug.LogError("[TERMINAL] Local player not found!");
             return;
         }
 
-        if (playerMovement == null)
-            return;
+        Debug.Log("[TERMINAL] Opening terminal.");
+
+        // Save HUD states BEFORE hiding anything.
+        SaveAndHideGameplayHUD();
 
         terminalOpen = true;
+        currentTerminal = null;
+        holdTimer = 0f;
 
-        ResetInteraction();
+        if (interactionPrompt != null)
+            interactionPrompt.SetActive(false);
 
-        // Remember and hide gameplay HUD.
-        HideGameplayHUD();
+        UpdateSlider();
 
         if (crosshair != null)
         {
@@ -285,54 +301,144 @@ public class TerminalInteractionController : MonoBehaviour
             crosshair.SetActive(false);
         }
 
-        // Show terminal.
         terminalPanel.SetActive(true);
 
-        // Unlock mouse and freeze player controls.
         playerMovement.SetTerminalUIOpen(true);
 
-        Debug.Log("[TERMINAL] Terminal opened. Gameplay HUD hidden.");
+        Debug.Log("[TERMINAL] Terminal opened successfully.");
     }
 
-    private void HideGameplayHUD()
+    private void SaveAndHideGameplayHUD()
     {
+        if (hudStatesSaved)
+            return;
+
         if (hudElementsToHide == null)
             return;
 
-        previousHudStates = new bool[hudElementsToHide.Length];
+        previousHudStates =
+            new bool[hudElementsToHide.Length];
 
+        managedHudEntries =
+            new bool[hudElementsToHide.Length];
+
+        // Save ALL original states first.
         for (int i = 0; i < hudElementsToHide.Length; i++)
         {
-            GameObject hud = hudElementsToHide[i];
+            GameObject item = hudElementsToHide[i];
 
-            if (hud == null || hud == terminalPanel)
+            if (item == null)
                 continue;
 
-            previousHudStates[i] = hud.activeSelf;
+            bool wouldHideController =
+                item == gameObject ||
+                transform.IsChildOf(item.transform);
 
-            hud.SetActive(false);
+            bool wouldHideTerminal =
+                item == terminalPanel ||
+                terminalPanel.transform.IsChildOf(item.transform);
+
+            if (wouldHideController || wouldHideTerminal)
+            {
+                Debug.LogWarning(
+                    "[TERMINAL] Skipping unsafe HUD entry: " +
+                    item.name
+                );
+
+                continue;
+            }
+
+            previousHudStates[i] = item.activeSelf;
+            managedHudEntries[i] = true;
+
+            Debug.Log(
+                "[TERMINAL] Saved " + item.name +
+                " = " + previousHudStates[i]
+            );
         }
+
+        hudStatesSaved = true;
+
+        // Only after all states are saved, hide the HUD.
+        for (int i = 0; i < hudElementsToHide.Length; i++)
+        {
+            if (hudElementsToHide[i] == null ||
+                !managedHudEntries[i])
+                continue;
+
+            hudElementsToHide[i].SetActive(false);
+        }
+
+        Debug.Log("[TERMINAL] Gameplay HUD hidden.");
     }
 
     private void RestoreGameplayHUD()
     {
-        if (hudElementsToHide == null ||
-            previousHudStates == null)
-            return;
-
-        for (int i = 0; i < hudElementsToHide.Length; i++)
+        if (!hudStatesSaved)
         {
-            if (hudElementsToHide[i] != null)
-            {
-                hudElementsToHide[i].SetActive(
-                    previousHudStates[i]
-                );
-            }
+            Debug.LogWarning("[TERMINAL] No HUD states were saved.");
+            return;
         }
 
-        // Restore the original crosshair state.
+        // Restore every element to its original state.
+        for (int i = 0; i < hudElementsToHide.Length; i++)
+        {
+            if (hudElementsToHide[i] == null ||
+                !managedHudEntries[i])
+                continue;
+
+            hudElementsToHide[i].SetActive(
+                previousHudStates[i]
+            );
+
+            Debug.Log(
+                "[TERMINAL] Restored " +
+                hudElementsToHide[i].name +
+                " = " + previousHudStates[i]
+            );
+        }
+
+        hudStatesSaved = false;
+        previousHudStates = null;
+        managedHudEntries = null;
+
         if (crosshair != null)
             crosshair.SetActive(previousCrosshairState);
+
+        Debug.Log("[TERMINAL] All HUD states restored.");
+    }
+
+    public void CloseTerminal()
+    {
+        Debug.Log("[TERMINAL] EXIT PRESSED!");
+
+        // Close even if the internal flag got out of sync.
+        terminalOpen = false;
+
+        if (terminalPanel != null)
+            terminalPanel.SetActive(false);
+
+        if (interactionPrompt != null)
+            interactionPrompt.SetActive(false);
+
+        UpdateSlider();
+
+        currentTerminal = null;
+        holdTimer = 0f;
+
+        // Restore all previous HUD states.
+        RestoreGameplayHUD();
+
+        FindLocalPlayer();
+
+        if (playerMovement != null)
+        {
+            playerMovement.SetTerminalUIOpen(false);
+        }
+
+        Debug.Log(
+            "[TERMINAL] CLOSED. HUD RESTORATION COMPLETE."
+        );
     }
 
     private void HandleTerminalUI()
@@ -344,58 +450,9 @@ public class TerminalInteractionController : MonoBehaviour
         }
     }
 
-    // Called automatically by the Exit button.
-    public void CloseTerminal()
-    {
-        if (!terminalOpen)
-        {
-            Debug.Log("[TERMINAL] Already closed.");
-            return;
-        }
-
-        terminalOpen = false;
-
-        // Hide terminal interface.
-        if (terminalPanel != null)
-            terminalPanel.SetActive(false);
-
-        // Restore normal HUD.
-        RestoreGameplayHUD();
-
-        if (interactionPrompt != null)
-            interactionPrompt.SetActive(false);
-
-        holdTimer = 0f;
-        currentTerminal = null;
-
-        UpdateSlider();
-
-        // Restore first-person controls and lock mouse.
-        if (playerMovement != null)
-            playerMovement.SetTerminalUIOpen(false);
-
-        Debug.Log("[TERMINAL] Closed. Gameplay HUD restored.");
-    }
-
     private void OnDestroy()
     {
         if (exitButton != null)
             exitButton.onClick.RemoveListener(CloseTerminal);
-    }
-
-    private void OnDisable()
-    {
-        if (terminalOpen)
-        {
-            terminalOpen = false;
-
-            if (terminalPanel != null)
-                terminalPanel.SetActive(false);
-
-            RestoreGameplayHUD();
-
-            if (playerMovement != null)
-                playerMovement.SetTerminalUIOpen(false);
-        }
     }
 }

@@ -724,11 +724,7 @@ MonoBehaviour:
   terminalPanel: {fileID: 1206010676}
   exitButton: {fileID: 1926030635}
   hudElementsToHide:
-  - {fileID: 1381722177}
-  - {fileID: 2079118139}
-  - {fileID: 842298913}
-  - {fileID: 1166274460}
-  - {fileID: 867445699}
+  - {fileID: 1856485909}
   crosshair: {fileID: 867445699}
   playerMovement: {fileID: 0}
 --- !u!1 &157682257
@@ -1455,6 +1451,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 361217910}
+  - component: {fileID: 361217911}
   m_Layer: 0
   m_Name: TerminalUI
   m_TagString: Untagged
@@ -1478,6 +1475,20 @@ Transform:
   - {fileID: 684540486}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &361217911
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 361217909}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a05937affaf1754087c67c03a94c246, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TerminalUIClose
+  interactionController: {fileID: 132728320}
+  terminalUIRoot: {fileID: 1206010676}
 --- !u!1 &362269288
 GameObject:
   m_ObjectHideFlags: 0
@@ -15815,8 +15826,8 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 132728320}
-        m_TargetAssemblyTypeName: TerminalInteractionController, Assembly-CSharp
+      - m_Target: {fileID: 361217911}
+        m_TargetAssemblyTypeName: TerminalUIClose, Assembly-CSharp
         m_MethodName: CloseTerminal
         m_Mode: 1
         m_Arguments:
@@ -19617,7 +19628,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 543450652973650632}
-  - component: {fileID: 919132148714342515}
   m_Layer: 0
   m_Name: lowpoly_earth
   m_TagString: Untagged
@@ -19625,19 +19635,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &919132148714342515
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 919132148714342514}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 745a876f3cab8495ea8eaea3c4f29b98, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RotateObject
-  rotationSpeed: {x: 0, y: 10, z: 0}
 --- !u!1 &1011948164406316393
 GameObject:
   m_ObjectHideFlags: 0
