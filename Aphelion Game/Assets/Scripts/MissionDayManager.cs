@@ -1,11 +1,17 @@
 
+using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
 public class MissionDayManager : NetworkBehaviour
 {
-    public const int TotalDays = 14;
+    public const int TotalDays = 5;
 
+    public const float FadeDuration = 1.25f;
+    public const float NetworkFadeBuffer = 0.3f;
+    public const float BlackHoldDuration = 0.4f;
+
+    // 0 = normal, 1 = fade out, 2 = fade in.
     public NetworkVariable<int> CurrentDay =
         new NetworkVariable<int>(
             1,
@@ -13,51 +19,83 @@ public class MissionDayManager : NetworkBehaviour
             NetworkVariableWritePermission.Server
         );
 
+    public NetworkVariable<int> TransitionState =
+        new NetworkVariable<int>(
+            0,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
+    private Coroutine transitionRoutine;
+
     public override void OnNetworkSpawn()
     {
         Debug.Log(
-            "[DAY MANAGER] Mission started. Day " +
-            CurrentDay.Value + " of " + TotalDays
+            "[DAY MANAGER] DAY " +
+            CurrentDay.Value + " OF " + TotalDays
         );
-
-        CurrentDay.OnValueChanged += OnDayChanged;
     }
 
-    public override void OnNetworkDespawn()
-    {
-        CurrentDay.OnValueChanged -= OnDayChanged;
-    }
-
-    // Only the server is allowed to advance the mission.
     public bool AdvanceDayServer()
     {
         if (!IsServer)
-        {
-            Debug.LogWarning("[DAY MANAGER] Only the server can advance days.");
             return false;
-        }
 
         if (CurrentDay.Value >= TotalDays)
         {
-            Debug.Log("[DAY MANAGER] All 14 mission days are complete.");
+            Debug.Log("[DAY MANAGER] All five days completed.");
             return false;
         }
 
-        CurrentDay.Value++;
+        if (transitionRoutine != null || TransitionState.Value != 0)
+            return false;
 
-        Debug.Log(
-            "[DAY MANAGER] ADVANCED TO DAY " +
-            CurrentDay.Value + " OF " + TotalDays
-        );
+        transitionRoutine = StartCoroutine(AdvanceDayRoutine());
 
         return true;
     }
 
-    private void OnDayChanged(int previousDay, int newDay)
+    private IEnumerator AdvanceDayRoutine()
     {
-        Debug.Log(
-            "[DAY MANAGER] Day changed: " +
-            previousDay + " -> " + newDay
+        Debug.Log("[DAY MANAGER] Starting day transition.");
+
+        // All players fade to black.
+        TransitionState.Value = 1;
+
+        yield return new WaitForSecondsRealtime(
+            FadeDuration + NetworkFadeBuffer
         );
+
+        // Update the day while the screen is black.
+        CurrentDay.Value++;
+
+        Debug.Log(
+            "[DAY MANAGER] NOW ENTERING DAY " +
+            CurrentDay.Value + " OF " + TotalDays
+        );
+
+        yield return new WaitForSecondsRealtime(BlackHoldDuration);
+
+        // All players fade back in.
+        TransitionState.Value = 2;
+
+        yield return new WaitForSecondsRealtime(
+            FadeDuration + NetworkFadeBuffer
+        );
+
+        TransitionState.Value = 0;
+
+        Debug.Log("[DAY MANAGER] Day transition finished.");
+
+        transitionRoutine = null;
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (transitionRoutine != null)
+        {
+            StopCoroutine(transitionRoutine);
+            transitionRoutine = null;
+        }
     }
 }

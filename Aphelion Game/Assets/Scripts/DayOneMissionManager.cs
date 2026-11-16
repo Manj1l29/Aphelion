@@ -19,6 +19,13 @@ public class DayOneMissionManager : NetworkBehaviour
     public NetworkList<int> CompletedObjectives =
         new NetworkList<int>();
 
+    public NetworkVariable<int> CurrentObjectiveIndex =
+        new NetworkVariable<int>(
+            0,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server
+        );
+
     public NetworkVariable<int> BaseCountdown =
         new NetworkVariable<int>(
             -1,
@@ -34,17 +41,12 @@ public class DayOneMissionManager : NetworkBehaviour
     public int CompletedCount => CompletedObjectives.Count;
 
     public bool AllObjectivesComplete =>
-        CompletedObjectives.Count >= ObjectiveCount;
+        CurrentObjectiveIndex.Value >= ObjectiveCount;
 
-    private bool IsDayOne
-    {
-        get
-        {
-            return dayManager != null &&
-                   dayManager.IsSpawned &&
-                   dayManager.CurrentDay.Value == 1;
-        }
-    }
+    private bool IsDayOne =>
+        dayManager != null &&
+        dayManager.IsSpawned &&
+        dayManager.CurrentDay.Value == 1;
 
     public bool IsObjectiveComplete(int objectiveId)
     {
@@ -53,12 +55,11 @@ public class DayOneMissionManager : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        Debug.Log("[MISSION] Day 1 manager spawned.");
+        if (dayManager == null)
+            dayManager = FindFirstObjectByType<MissionDayManager>();
 
         if (dayManager == null)
-        {
-            Debug.LogError("[MISSION] MissionDayManager is not assigned!");
-        }
+            Debug.LogError("[MISSION] MissionDayManager missing!");
 
         if (IsServer && NetworkManager.Singleton != null)
         {
@@ -68,6 +69,8 @@ public class DayOneMissionManager : NetworkBehaviour
             NetworkManager.Singleton.OnClientDisconnectCallback +=
                 HandleClientDisconnected;
         }
+
+        Debug.Log("[MISSION] Day 1 manager spawned.");
     }
 
     public override void OnNetworkDespawn()
@@ -88,7 +91,6 @@ public class DayOneMissionManager : NetworkBehaviour
         }
     }
 
-    // Called when a local player explores a section.
     public void ReportObjectiveCompleted(int objectiveId)
     {
         if (!IsSpawned)
@@ -113,26 +115,31 @@ public class DayOneMissionManager : NetworkBehaviour
         if (!NetworkManager.Singleton.ConnectedClients.ContainsKey(senderId))
             return;
 
+        // Only the current objective can be completed.
+        if (objectiveId != CurrentObjectiveIndex.Value)
+            return;
+
         if (CompletedObjectives.Contains(objectiveId))
             return;
 
         CompletedObjectives.Add(objectiveId);
 
+        CurrentObjectiveIndex.Value++;
+
         Debug.Log(
-            "[MISSION] Client " + senderId +
-            " explored objective " + objectiveId +
-            ". Progress: " + CompletedCount + "/" + ObjectiveCount
+            "[MISSION] Completed objective " +
+            objectiveId + ". Progress: " +
+            CompletedCount + "/" + ObjectiveCount
         );
 
         if (AllObjectivesComplete)
         {
-            Debug.Log("[MISSION] ALL SECTIONS EXPLORED. RETURN TO BASE!");
+            Debug.Log("[MISSION] ALL SECTIONS COMPLETE. RETURN TO BASE!");
         }
 
         TryStartReturnCountdown();
     }
 
-    // Called when a local player enters or leaves the base zone.
     public void ReportBasePresence(bool isInside)
     {
         if (!IsSpawned)
@@ -157,13 +164,11 @@ public class DayOneMissionManager : NetworkBehaviour
         if (isInside)
         {
             playersInBase.Add(senderId);
-
             Debug.Log("[MISSION] Client " + senderId + " entered base.");
         }
         else
         {
             playersInBase.Remove(senderId);
-
             Debug.Log("[MISSION] Client " + senderId + " left base.");
 
             CancelReturnCountdown();
@@ -186,7 +191,7 @@ public class DayOneMissionManager : NetworkBehaviour
         if (!AreAllConnectedPlayersInBase())
             return;
 
-        Debug.Log("[MISSION] All crew members returned. Starting countdown.");
+        Debug.Log("[MISSION] All crew returned. Starting countdown.");
 
         returnCountdownRoutine = StartCoroutine(ReturnCountdown());
     }
@@ -222,24 +227,19 @@ public class DayOneMissionManager : NetworkBehaviour
 
             BaseCountdown.Value = seconds;
 
-            Debug.Log("[MISSION] Day 2 begins in " + seconds);
+            Debug.Log("[MISSION] Day transition in " + seconds);
 
-            yield return new WaitForSeconds(1f);
+            yield return new WaitForSecondsRealtime(1f);
         }
 
         if (AllObjectivesComplete &&
             AreAllConnectedPlayersInBase() &&
             IsDayOne)
         {
-            // The central Day Manager advances the entire mission.
-            bool advanced = dayManager.AdvanceDayServer();
+            bool started = dayManager != null &&
+                           dayManager.AdvanceDayServer();
 
-            BaseCountdown.Value = advanced ? 0 : -1;
-
-            if (advanced)
-            {
-                Debug.Log("[MISSION] DAY 1 COMPLETE. DAY 2 STARTED!");
-            }
+            BaseCountdown.Value = started ? 0 : -1;
         }
         else
         {
@@ -264,20 +264,14 @@ public class DayOneMissionManager : NetworkBehaviour
 
     private void HandleClientConnected(ulong clientId)
     {
-        if (!IsServer)
-            return;
-
         playersInBase.Remove(clientId);
 
-        if (IsDayOne)
+        if (returnCountdownRoutine != null)
             CancelReturnCountdown();
     }
 
     private void HandleClientDisconnected(ulong clientId)
     {
-        if (!IsServer)
-            return;
-
         playersInBase.Remove(clientId);
 
         if (returnCountdownRoutine != null &&

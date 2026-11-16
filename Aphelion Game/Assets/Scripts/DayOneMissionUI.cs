@@ -1,7 +1,7 @@
 
-using System.Collections;
 using System.Text;
 using TMPro;
+using Unity.Netcode;
 using UnityEngine;
 
 public class DayOneMissionUI : MonoBehaviour
@@ -10,21 +10,23 @@ public class DayOneMissionUI : MonoBehaviour
     [SerializeField] private MissionDayManager dayManager;
     [SerializeField] private DayOneMissionManager missionManager;
 
-    [Header("Main HUD")]
-    [SerializeField] private TMP_Text dayText;
-    [SerializeField] private TMP_Text missionTitleText;
+    [Header("Current Objective")]
+    [SerializeField] private GameObject currentObjectivePanel;
+    [SerializeField] private TMP_Text currentObjectiveTitleText;
+    [SerializeField] private TMP_Text currentObjectiveDescriptionText;
+
+    [Header("Mission Checklist")]
+    [SerializeField] private GameObject progressPanel;
+    [SerializeField] private TMP_Text progressHeaderText;
     [SerializeField] private TMP_Text progressText;
+
+    [Header("Return To Base")]
+    [SerializeField] private GameObject returnPromptPanel;
     [SerializeField] private TMP_Text returnPromptText;
+
+    [Header("Countdown")]
+    [SerializeField] private GameObject countdownPanel;
     [SerializeField] private TMP_Text countdownText;
-
-    [Header("Section Popup")]
-    [SerializeField] private GameObject sectionPopup;
-    [SerializeField] private TMP_Text sectionNameText;
-    [SerializeField] private TMP_Text sectionDescriptionText;
-
-    [SerializeField] private float popupDuration = 4f;
-
-    private Coroutine popupCoroutine;
 
     private readonly string[] objectiveNames =
     {
@@ -34,45 +36,76 @@ public class DayOneMissionUI : MonoBehaviour
         "HABITAT"
     };
 
+    private readonly string[] objectiveTitles =
+    {
+        "Explore Communications",
+        "Explore Solar Panels",
+        "Explore Power House",
+        "Explore Habitat"
+    };
+
+    private readonly string[] objectiveDescriptions =
+    {
+        "Locate and enter the communications section of the lunar base.",
+        "Locate and enter the solar panel area to explore the base's power generation system.",
+        "Locate and enter the power house to explore the base's electrical distribution system.",
+        "Locate and enter the habitat to explore the crew's living quarters."
+    };
+
     private void Awake()
     {
-        FindReferences();
+        ResolveReferences();
 
-        if (sectionPopup != null)
-        {
-            sectionPopup.SetActive(false);
-        }
-
-        if (dayText != null)
-        {
-            dayText.richText = true;
-        }
+        SetPanel(currentObjectivePanel, true);
+        SetPanel(progressPanel, true);
+        SetPanel(returnPromptPanel, false);
+        SetPanel(countdownPanel, false);
     }
 
-    private void FindReferences()
+    private void Update()
     {
-        // Find managers automatically if not assigned.
+        ResolveReferences();
+
+        if (dayManager == null || missionManager == null)
+            return;
+
+        if (!dayManager.IsSpawned || !missionManager.IsSpawned)
+            return;
+
+        if (dayManager.CurrentDay.Value == 1)
+            UpdateDayOne();
+        else
+            UpdateLaterDay(dayManager.CurrentDay.Value);
+    }
+
+    private void ResolveReferences()
+    {
         if (dayManager == null)
             dayManager = FindFirstObjectByType<MissionDayManager>();
 
         if (missionManager == null)
             missionManager = FindFirstObjectByType<DayOneMissionManager>();
 
-        // Find UI elements by their GameObject names.
-        if (sectionPopup == null)
-            sectionPopup = FindChild("SectionPopup");
+        if (currentObjectivePanel == null)
+            currentObjectivePanel = FindChild("CurrentObjectivePanel");
 
-        if (sectionNameText == null)
-            sectionNameText = FindText("SectionNameText");
+        if (progressPanel == null)
+            progressPanel = FindChild("ProgressPanel");
 
-        if (sectionDescriptionText == null)
-            sectionDescriptionText = FindText("SectionDescriptionText");
+        if (returnPromptPanel == null)
+            returnPromptPanel = FindChild("ReturnPromptPanel");
 
-        if (dayText == null)
-            dayText = FindText("DayText");
+        if (countdownPanel == null)
+            countdownPanel = FindChild("CountdownPanel");
 
-        if (missionTitleText == null)
-            missionTitleText = FindText("MissionTitleText");
+        if (currentObjectiveTitleText == null)
+            currentObjectiveTitleText = FindText("CurrentObjectiveTitleText");
+
+        if (currentObjectiveDescriptionText == null)
+            currentObjectiveDescriptionText = FindText("CurrentObjectiveDescriptionText");
+
+        if (progressHeaderText == null)
+            progressHeaderText = FindText("ProgressHeaderText");
 
         if (progressText == null)
             progressText = FindText("ProgressText");
@@ -97,189 +130,133 @@ public class DayOneMissionUI : MonoBehaviour
 
     private TMP_Text FindText(string objectName)
     {
-        foreach (TMP_Text textObject in GetComponentsInChildren<TMP_Text>(true))
+        foreach (TMP_Text item in GetComponentsInChildren<TMP_Text>(true))
         {
-            if (textObject.name == objectName)
-                return textObject;
+            if (item.name == objectName)
+                return item;
         }
 
         return null;
     }
 
-    private void Update()
+    private void SetPanel(GameObject panel, bool active)
     {
-        if (dayManager == null || !dayManager.IsSpawned)
-            return;
+        if (panel != null && panel.activeSelf != active)
+            panel.SetActive(active);
+    }
 
-        int currentDay = dayManager.CurrentDay.Value;
+    private void UpdateDayOne()
+    {
+        int currentIndex =
+            missionManager.CurrentObjectiveIndex.Value;
 
-        if (dayText != null)
+        SetPanel(currentObjectivePanel, true);
+        SetPanel(progressPanel, true);
+
+        if (currentIndex < objectiveNames.Length)
         {
-            dayText.text =
-                "DAY " + currentDay +
-                " <size=60%><color=#9A8BC0>of 14</color></size>";
-        }
+            if (currentObjectiveTitleText != null)
+                currentObjectiveTitleText.text =
+                    objectiveTitles[currentIndex];
 
-        if (currentDay == 1)
-        {
-            if (missionManager == null || !missionManager.IsSpawned)
-                return;
-
-            UpdateDayOneHUD();
+            if (currentObjectiveDescriptionText != null)
+                currentObjectiveDescriptionText.text =
+                    objectiveDescriptions[currentIndex];
         }
         else
         {
-            UpdateLaterDayHUD(currentDay);
-        }
-    }
+            if (currentObjectiveTitleText != null)
+                currentObjectiveTitleText.text = "RETURN TO BASE";
 
-    private void UpdateDayOneHUD()
-    {
-        if (missionTitleText != null)
-            missionTitleText.text = "CREW ORIENTATION";
+            if (currentObjectiveDescriptionText != null)
+            {
+                currentObjectiveDescriptionText.text =
+                    "All four sections have been explored. Regroup with your crew inside the base.";
+            }
+        }
+
+        if (progressHeaderText != null)
+        {
+            progressHeaderText.text =
+                "MISSION PROGRESS  |  " +
+                missionManager.CompletedCount + "/4";
+        }
 
         if (progressText != null)
-            progressText.text = BuildProgressText();
+            progressText.text = BuildProgressText(currentIndex);
 
         bool allComplete = missionManager.AllObjectivesComplete;
 
-        if (returnPromptText != null)
+        SetPanel(returnPromptPanel, allComplete);
+
+        if (returnPromptText != null && allComplete)
         {
-            returnPromptText.gameObject.SetActive(allComplete);
-
-            if (allComplete)
-            {
-                returnPromptText.text =
-                    "ALL SECTIONS EXPLORED\nRETURN TO BASE";
-            }
-        }
-
-        if (countdownText != null)
-        {
-            int countdown = missionManager.BaseCountdown.Value;
-
-            countdownText.gameObject.SetActive(countdown > 0);
-
-            if (countdown > 0)
-            {
-                countdownText.text =
-                    "ALL CREW IN BASE\nDAY 2 BEGINS IN " +
-                    countdown + "...";
-            }
-        }
-    }
-
-    private void UpdateLaterDayHUD(int currentDay)
-    {
-        if (missionTitleText != null)
-            missionTitleText.text = "SURVIVAL OPERATIONS";
-
-        if (progressText != null)
-        {
-            progressText.text =
-                "DAY 1 COMPLETE\nALL FOUR SECTIONS EXPLORED";
-        }
-
-        if (returnPromptText != null)
-        {
-            returnPromptText.gameObject.SetActive(true);
-
             returnPromptText.text =
-                "DAY " + currentDay +
-                " HAS BEGUN\nNEW OBJECTIVES COMING SOON";
+                "ALL SECTIONS EXPLORED\nRETURN TO BASE";
         }
 
-        if (countdownText != null)
-            countdownText.gameObject.SetActive(false);
+        int countdown = missionManager.BaseCountdown.Value;
+
+        SetPanel(countdownPanel, countdown > 0);
+
+        if (countdownText != null && countdown > 0)
+        {
+            countdownText.text =
+                "ALL CREW IN BASE\nDAY TRANSITION IN " +
+                countdown + "...";
+        }
     }
 
-    private string BuildProgressText()
+    private string BuildProgressText(int currentIndex)
     {
         StringBuilder builder = new StringBuilder();
 
-        builder.AppendLine(
-            "SECTIONS EXPLORED: " +
-            missionManager.CompletedCount + "/4"
-        );
-
-        builder.AppendLine();
-
         for (int i = 0; i < objectiveNames.Length; i++)
         {
-            bool completed = missionManager.IsObjectiveComplete(i);
+            string marker;
 
-            string marker = completed ? "[X]" : "[ ]";
+            if (missionManager.IsObjectiveComplete(i))
+                marker = "[X]";
+            else if (i == currentIndex)
+                marker = "[>]";
+            else
+                marker = "[ ]";
 
-            builder.AppendLine(marker + " " + objectiveNames[i]);
+            builder.AppendLine(
+                marker + " " + objectiveNames[i]
+            );
         }
 
         return builder.ToString();
     }
 
-    public void ShowSectionMessage(
-        string sectionName,
-        string description)
+    private void UpdateLaterDay(int currentDay)
     {
-        // Try finding missing UI references again.
-        FindReferences();
+        SetPanel(currentObjectivePanel, true);
+        SetPanel(progressPanel, true);
+        SetPanel(returnPromptPanel, false);
+        SetPanel(countdownPanel, false);
 
-        if (sectionPopup == null)
+        if (currentObjectiveTitleText != null)
+            currentObjectiveTitleText.text = "SURVIVAL OPERATIONS";
+
+        if (currentObjectiveDescriptionText != null)
         {
-            Debug.LogError(
-                "[MISSION UI] SectionPopup was not found!"
-            );
-            return;
+            currentObjectiveDescriptionText.text =
+                "Day " + currentDay +
+                " has begun. New survival objectives will be assigned.";
         }
 
-        if (sectionNameText == null)
+        if (progressHeaderText != null)
+            progressHeaderText.text = "DAY 1 COMPLETE  |  4/4";
+
+        if (progressText != null)
         {
-            Debug.LogError(
-                "[MISSION UI] SectionNameText was not found!"
-            );
-            return;
-        }
-
-        if (sectionDescriptionText == null)
-        {
-            Debug.LogError(
-                "[MISSION UI] SectionDescriptionText was not found!"
-            );
-            return;
-        }
-
-        sectionNameText.text = sectionName;
-        sectionDescriptionText.text = description;
-
-        sectionPopup.SetActive(true);
-
-        Debug.Log(
-            "[MISSION UI] Showing section: " + sectionName
-        );
-
-        if (popupCoroutine != null)
-        {
-            StopCoroutine(popupCoroutine);
-        }
-
-        popupCoroutine = StartCoroutine(HideSectionPopup());
-    }
-
-    private IEnumerator HideSectionPopup()
-    {
-        yield return new WaitForSecondsRealtime(popupDuration);
-
-        if (sectionPopup != null)
-            sectionPopup.SetActive(false);
-
-        popupCoroutine = null;
-    }
-
-    private void OnDisable()
-    {
-        if (popupCoroutine != null)
-        {
-            StopCoroutine(popupCoroutine);
-            popupCoroutine = null;
+            progressText.text =
+                "[X] COMMUNICATIONS\n" +
+                "[X] SOLAR PANELS\n" +
+                "[X] POWER HOUSE\n" +
+                "[X] HABITAT";
         }
     }
 }

@@ -1,4 +1,5 @@
 
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -17,32 +18,47 @@ public class DayOneObjectiveZone : MonoBehaviour
     [Header("References")]
     [SerializeField] private MissionDayManager dayManager;
     [SerializeField] private DayOneMissionManager missionManager;
-    [SerializeField] private DayOneMissionUI missionUI;
 
-    [Header("Red Beacon")]
+    [Header("Existing Red Beacon")]
     [SerializeField] private GameObject redBeacon;
-    [SerializeField] private bool showBeacon = false;
 
-    private bool localPlayerHasEntered;
+    private readonly HashSet<int> localPlayerColliders =
+        new HashSet<int>();
 
-    private void Reset()
-    {
-        GetComponent<BoxCollider>().isTrigger = true;
-    }
+    private bool localPlayerHasReported;
+    private bool warnedMissingBeacon;
 
     private void Awake()
+    {
+        GetComponent<BoxCollider>().isTrigger = true;
+
+        ResolveReferences();
+
+        // Every beacon starts hidden.
+        SetBeacon(false);
+    }
+
+    private void Start()
+    {
+        ResolveReferences();
+        RefreshBeacon();
+    }
+
+    private void Update()
+    {
+        ResolveReferences();
+
+        RefreshBeacon();
+        TryCompleteCurrentObjective();
+    }
+
+    private void ResolveReferences()
     {
         if (dayManager == null)
             dayManager = FindFirstObjectByType<MissionDayManager>();
 
         if (missionManager == null)
             missionManager = FindFirstObjectByType<DayOneMissionManager>();
-
-        if (missionUI == null)
-            missionUI = FindFirstObjectByType<DayOneMissionUI>();
-
-        if (redBeacon != null)
-            redBeacon.SetActive(showBeacon);
     }
 
     private void OnTriggerEnter(Collider other)
@@ -53,48 +69,111 @@ public class DayOneObjectiveZone : MonoBehaviour
         if (player == null || !player.IsOwner)
             return;
 
-        if (localPlayerHasEntered)
+        localPlayerColliders.Add(other.GetInstanceID());
+
+        TryCompleteCurrentObjective();
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        NetworkObject player =
+            other.GetComponentInParent<NetworkObject>();
+
+        if (player == null || !player.IsOwner)
             return;
 
-        if (dayManager == null ||
-            missionManager == null)
-        {
-            Debug.LogError(
-                "[OBJECTIVE ZONE] Mission managers missing on " + name
-            );
-            return;
-        }
+        localPlayerColliders.Remove(other.GetInstanceID());
+    }
 
-        if (!dayManager.IsSpawned ||
-            !missionManager.IsSpawned ||
-            dayManager.CurrentDay.Value != 1)
+    private void TryCompleteCurrentObjective()
+    {
+        if (localPlayerColliders.Count == 0)
             return;
 
-        localPlayerHasEntered = true;
+        if (localPlayerHasReported)
+            return;
+
+        if (dayManager == null || missionManager == null)
+            return;
+
+        if (!dayManager.IsSpawned || !missionManager.IsSpawned)
+            return;
+
+        if (dayManager.CurrentDay.Value != 1)
+            return;
+
+        if (missionManager.CurrentObjectiveIndex.Value != objectiveIndex)
+            return;
+
+        localPlayerHasReported = true;
 
         Debug.Log(
-            "[OBJECTIVE ZONE] Player entered " + sectionName
+            "[OBJECTIVE] Correct section entered: " + sectionName
         );
 
-        // Automatically find the local HUD if necessary.
-        if (missionUI == null)
-            missionUI = FindFirstObjectByType<DayOneMissionUI>();
+        missionManager.ReportObjectiveCompleted(objectiveIndex);
+    }
 
-        if (missionUI != null)
+    private void RefreshBeacon()
+    {
+        if (redBeacon == null)
         {
-            missionUI.ShowSectionMessage(
-                sectionName,
-                sectionDescription
-            );
+            if (!warnedMissingBeacon)
+            {
+                Debug.LogWarning(
+                    "[BEACON] No beacon assigned to " + gameObject.name
+                );
+
+                warnedMissingBeacon = true;
+            }
+
+            return;
         }
-        else
+
+        bool shouldShow = false;
+
+        if (dayManager != null &&
+            missionManager != null &&
+            dayManager.IsSpawned &&
+            missionManager.IsSpawned)
+        {
+            shouldShow =
+                dayManager.CurrentDay.Value == 1 &&
+                missionManager.CurrentObjectiveIndex.Value == objectiveIndex &&
+                !missionManager.IsObjectiveComplete(objectiveIndex);
+        }
+
+        SetBeacon(shouldShow);
+    }
+
+    private void SetBeacon(bool visible)
+    {
+        if (redBeacon == null)
+            return;
+
+        if (redBeacon == gameObject)
         {
             Debug.LogError(
-                "[OBJECTIVE ZONE] Could not find DayOneMissionUI!"
+                "[BEACON] The beacon cannot be the objective zone itself!"
             );
+            return;
         }
 
-        // Report exploration to the networked mission manager.
-        missionManager.ReportObjectiveCompleted(objectiveIndex);
+        if (redBeacon.activeSelf != visible)
+        {
+            redBeacon.SetActive(visible);
+
+            Debug.Log(
+                "[BEACON] " + redBeacon.name +
+                (visible ? " ACTIVATED" : " DEACTIVATED")
+            );
+        }
+    }
+
+    private void OnDisable()
+    {
+        localPlayerColliders.Clear();
+
+        SetBeacon(false);
     }
 }
