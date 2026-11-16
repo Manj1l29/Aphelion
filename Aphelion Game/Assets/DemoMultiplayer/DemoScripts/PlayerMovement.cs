@@ -38,6 +38,10 @@ public class PlayerMovement : NetworkBehaviour
     private Collider col;
     private NetworkAnimator networkAnimator;
 
+    // Terminal interaction state.
+    private bool terminalUIOpen;
+    private bool ignoreEscapeUntilRelease;
+
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
@@ -52,6 +56,7 @@ public class PlayerMovement : NetworkBehaviour
             RigidbodyConstraints.FreezeRotationX |
             RigidbodyConstraints.FreezeRotationZ;
 
+        // No rotation interpolation.
         rb.interpolation = RigidbodyInterpolation.None;
     }
 
@@ -74,16 +79,15 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         if (animator == null)
-        {
             Debug.LogError("[PLAYER] Animator is missing!");
-        }
 
         if (networkAnimator == null)
-        {
             Debug.LogError("[PLAYER] NetworkAnimator is missing!");
-        }
 
         yaw = transform.eulerAngles.y;
+
+        terminalUIOpen = false;
+        ignoreEscapeUntilRelease = false;
 
         SetCursorLocked(true);
     }
@@ -92,6 +96,13 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (!IsOwner)
             return;
+
+        // Do not control the character while using the terminal.
+        if (terminalUIOpen)
+        {
+            UpdateAnimations();
+            return;
+        }
 
         HandleCursor();
 
@@ -114,9 +125,10 @@ public class PlayerMovement : NetworkBehaviour
 
     private void LateUpdate()
     {
-        if (!IsOwner || cam == null)
+        if (!IsOwner || cam == null || terminalUIOpen)
             return;
 
+        // Instant first-person camera rotation.
         cam.rotation = Quaternion.Euler(pitch, yaw, 0f);
     }
 
@@ -138,6 +150,16 @@ public class PlayerMovement : NetworkBehaviour
         if (Keyboard.current == null || Mouse.current == null)
             return;
 
+        // Prevent the Escape press that closed the terminal
+        // from immediately unlocking the gameplay cursor.
+        if (ignoreEscapeUntilRelease)
+        {
+            if (!Keyboard.current.escapeKey.isPressed)
+                ignoreEscapeUntilRelease = false;
+
+            return;
+        }
+
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
             SetCursorLocked(false);
 
@@ -147,6 +169,27 @@ public class PlayerMovement : NetworkBehaviour
 
         if (Mouse.current.leftButton.wasPressedThisFrame && !clickedOnUI)
             SetCursorLocked(true);
+    }
+
+    // Called by TerminalInteractionController.
+    public void SetTerminalUIOpen(bool open)
+    {
+        terminalUIOpen = open;
+
+        ignoreEscapeUntilRelease = true;
+
+        if (open)
+        {
+            Debug.Log("[PLAYER] Terminal opened. Movement disabled.");
+
+            SetCursorLocked(false);
+        }
+        else
+        {
+            Debug.Log("[PLAYER] Terminal closed. Movement restored.");
+
+            SetCursorLocked(true);
+        }
     }
 
     public void SetCursorLocked(bool locked)
@@ -178,46 +221,63 @@ public class PlayerMovement : NetworkBehaviour
 
     private void Movement()
     {
+        // Freeze horizontal movement while terminal is open
+        // or while the cursor is unlocked.
         Vector3 input =
-            Cursor.lockState == CursorLockMode.Locked
+            Cursor.lockState == CursorLockMode.Locked &&
+            !terminalUIOpen
             ? GetMoveInput()
             : Vector3.zero;
 
-        Quaternion cameraYaw = Quaternion.Euler(0f, yaw, 0f);
+        Quaternion cameraYaw =
+            Quaternion.Euler(0f, yaw, 0f);
 
         Vector3 moveDirection = cameraYaw * input;
 
         float currentSpeed = 0f;
 
-        if (Keyboard.current != null)
+        if (Keyboard.current != null &&
+            Cursor.lockState == CursorLockMode.Locked &&
+            !terminalUIOpen)
         {
-            currentSpeed = Keyboard.current.leftShiftKey.isPressed
+            currentSpeed =
+                Keyboard.current.leftShiftKey.isPressed
                 ? runSpeed
                 : moveSpeed;
         }
 
         Vector3 velocity = moveDirection * currentSpeed;
 
+        // Preserve vertical physics, including gravity.
         velocity.y = rb.linearVelocity.y;
 
         rb.linearVelocity = velocity;
 
-        // Instant rotation. No smoothing.
-        rb.MoveRotation(Quaternion.Euler(0f, yaw, 0f));
+        // Instant body rotation, without smoothing.
+        if (!terminalUIOpen &&
+            Cursor.lockState == CursorLockMode.Locked)
+        {
+            rb.MoveRotation(
+                Quaternion.Euler(0f, yaw, 0f)
+            );
+        }
     }
 
     private void Jump()
     {
-        if (Keyboard.current == null)
+        if (Keyboard.current == null || terminalUIOpen)
             return;
 
-        if (Keyboard.current.spaceKey.wasPressedThisFrame && IsGrounded())
+        if (Keyboard.current.spaceKey.wasPressedThisFrame &&
+            IsGrounded())
         {
-            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            rb.AddForce(
+                Vector3.up * jumpForce,
+                ForceMode.Impulse
+            );
 
             if (networkAnimator != null)
             {
-                // Networked trigger, not Animator.SetTrigger.
                 networkAnimator.SetTrigger(JumpHash);
             }
             else if (animator != null)
@@ -250,7 +310,14 @@ public class PlayerMovement : NetworkBehaviour
         Vector3 flatVelocity = rb.linearVelocity;
         flatVelocity.y = 0f;
 
-        animator.SetFloat(SpeedHash, flatVelocity.magnitude);
-        animator.SetBool(GroundedHash, IsGrounded());
+        animator.SetFloat(
+            SpeedHash,
+            flatVelocity.magnitude
+        );
+
+        animator.SetBool(
+            GroundedHash,
+            IsGrounded()
+        );
     }
 }
